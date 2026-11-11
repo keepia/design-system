@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A pull request run cancels the older run of the same pull request (its group
+# is the PR ref). A push to main gets a group of its own per commit and is never
+# cancelled, so every merge gets a complete CI result, also when the next merge
+# follows seconds later (the same rule as secrets.yml).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Generated files are committed (npm run build:all leaves the tree
+  # unchanged), the tests (npm test, among them scripts/workflows.test.mjs,
+  # the rules every workflow follows) and the package contents
+  # (scripts/check-pack.mjs).
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IBM_TELEMETRY_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Generated files are committed
+        run: |
+          npm run build:all
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            git diff --stat
+            echo "::error::npm run build:all changed the tree; run it (README, Building) and commit the result"
+            exit 1
+          fi
+
+      - name: Tests
+        run: npm test
+
+      - name: Package contents
+        run: npm pack --dry-run --json --ignore-scripts | node scripts/check-pack.mjs

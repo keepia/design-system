@@ -1,0 +1,10 @@
+node_modules/
+.render/
+*.tgz
+dist/
+.DS_Store
+.idea/
+.vscode/
+
+# Pinned tools built by the Makefile (gitleaks)
+/bin/

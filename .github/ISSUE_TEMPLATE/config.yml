@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/keepia/design-system/security/advisories/new
+    about: Report security problems privately, not in a public issue.
+  - name: Planned work and bugs (tracked in keepia/mail)
+    url: https://github.com/keepia/mail/issues
+    about: The work on the Keepia brand and this package is planned and tracked in keepia/mail.

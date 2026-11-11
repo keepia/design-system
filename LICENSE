@@ -1,0 +1,35 @@
+MIT License
+
+Copyright (c) 2026 Patrick Klein
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+
+Exceptions
+
+1. Brand assets are not covered by the MIT License above. The name "Keepia",
+   the keepia wordmark, the mark (the latch), the lockups of Keepia and its
+   products (Mail, Docs, Archive) and the app icons and favicons, including
+   the files in brand/ and the logo geometry in theme/logo-geometry.json, are
+   brand assets of Keepia. Copyright (c) 2026 Patrick Klein. All rights
+   reserved.
+
+2. Third-party code and fonts keep their own licenses (for example
+   Apache-2.0, MIT, SIL Open Font License 1.1).
