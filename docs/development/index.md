@@ -99,11 +99,11 @@ matches a rule (see `scripts/secret-scan-test.sh`). Any change to the
 secret-scan files needs the maintainer's OK (`CLAUDE.md`, "Rules").
 
 **Known fake finding.** The proof that the check fails a pull request with a
-credential is a throwaway draft pull request (number and commit added here
-once it has run), closed unmerged. Its only commit adds a file with the fake
+credential was the throwaway draft pull request #2 (commit
+`087cf783f6e38efb7069fc3a84bf9dfc2deeb035`), closed unmerged. Its only commit adds a file with the fake
 GitHub token that `scripts/secret-scan-test.sh` builds at runtime (rule
 `github-pat`); it is not a real credential. GitHub keeps that commit as
-`refs/pull/<n>/head`, so a full-history rescan that includes `refs/pull/*`
+`refs/pull/2/head`, so a full-history rescan that includes `refs/pull/*`
 reports it. This finding is the known fake: it gets no allowlist entry and no
 `.gitleaksignore` entry; rescans leave out `refs/pull/*`.
 
