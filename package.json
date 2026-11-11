@@ -20,5 +20,13 @@
   "scripts": {
     "build:all": "node scripts/build_all.mjs",
     "test": "node --test \"scripts/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@carbon/colors": "11.61.0",
+    "@carbon/styles": "1.118.0",
+    "@carbon/themes": "11.84.0",
+    "@ibm/plex-mono": "2.5.0",
+    "@ibm/plex-sans": "1.1.0",
+    "sass": "1.106.1"
   }
 }

@@ -1,0 +1,149 @@
+// Builds the Keepia Carbon theme from the Carbon packages and theme/brand.json
+// (keepia/mail#7, part 2; ported from pklnx/design-system scripts/build.mjs without its type,
+// bundle and claude.ai project sections):
+//   theme/keepia-carbon.css      the overrides for .cds--white and .cds--g100, loaded after Carbon's CSS
+//   theme/_index.scss            the same overrides for Sass ($white, $g100 and two mixins)
+//   theme/tokens.json            every colour token of White and G100, plus `changed`
+//   theme/contrast-report.json   every contrast pair of scripts/contrast.mjs with its ratio
+//   fonts/                       the IBM Plex woff2 files and OFL.txt
+//   THIRD_PARTY_NOTICES.md       the packages whose values or files ship, with their licence texts
+// Run: npm run build:all (README, "Building"), which runs this script among its steps.
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { evaluate } from './contrast.mjs';
+
+const require = createRequire(import.meta.url);
+const themes = require('@carbon/themes');
+const colors = require('@carbon/colors');
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const P = (...p) => path.join(ROOT, ...p);
+const write = (p, s) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); };
+const brand = JSON.parse(fs.readFileSync(P('theme/brand.json'), 'utf8'));
+const kebab = themes.formatTokenName;
+
+// ---------------------------------------------------------------- colours
+// Every Carbon colour token for White (light) and G100 (dark), theme and component tokens.
+const THEMES = { light: { carbon: themes.white, key: 'whiteTheme' }, dark: { carbon: themes.g100, key: 'g100' } };
+const isColor = (v) => typeof v === 'string' && /^(#|rgba?\()/i.test(v.trim());
+const all = { light: {}, dark: {} };
+for (const [id, t] of Object.entries(THEMES)) {
+  for (const [k, v] of Object.entries(t.carbon)) if (isColor(v)) all[id][kebab(k)] = v.toLowerCase();
+  for (const group of ['buttonTokens', 'notificationTokens', 'contentSwitcherTokens', 'tagTokens', 'statusTokens']) {
+    for (const [k, v] of Object.entries(themes[group])) if (isColor(v[t.key])) all[id][kebab(k)] = v[t.key].toLowerCase();
+  }
+}
+
+// Brand: Carbon's interactive Blue becomes the primary hue, step for step, including the Hover
+// steps (maintainer decision M1 on keepia/mail#7).
+const hue = brand.primary;
+if (!/^[a-z]+$/.test(hue ?? '') || hue === 'blue' || typeof colors[`${hue}60`] !== 'string') {
+  throw new Error(`theme/brand.json: "primary" must name a Carbon hue other than blue, got ${JSON.stringify(hue)}`);
+}
+const swap = {};
+for (const [k, v] of Object.entries(colors)) {
+  const m = /^blue(\d+)(Hover)?$/.exec(k);
+  if (!m || typeof v !== 'string') continue;
+  const to = colors[`${hue}${m[1]}${m[2] || ''}`];
+  if (typeof to !== 'string') throw new Error(`@carbon/colors has no ${hue}${m[1]}${m[2] || ''}`);
+  swap[v.toLowerCase()] = to.toLowerCase();
+}
+// Status, syntax, AI, tags and `notification-background-info` keep their Carbon meaning (Blue
+// is the info colour there). Visited links stay Carbon's Purple, which stays distinct from Teal
+// links; there is no star token (both unlike pklnx/design-system).
+const keep = /^(support-|syntax-|ai-|tag-|status-|notification-background-info)/;
+const changed = { light: {}, dark: {} };
+for (const id of ['light', 'dark']) {
+  for (const [name, v] of Object.entries(all[id])) {
+    if (keep.test(name)) continue;
+    if (swap[v]) { all[id][name] = swap[v]; changed[id][name] = swap[v]; }
+  }
+}
+
+// ---------------------------------------------------------------- contrast report
+// scripts/contrast.test.mjs fails `npm test` on the same evaluation; this file records it.
+const report = evaluate(all);
+write(P('theme/contrast-report.json'), JSON.stringify(report, null, 1) + '\n');
+
+// ---------------------------------------------------------------- theme/ for code
+// The tokens that differ from stock Carbon in either theme, to load after @carbon/styles.
+// Both blocks set the same keys, each with its own theme's value (Carbon's where only the
+// other theme changes it): the light selector includes :root, which also matches
+// <html class="cds--g100">, so a key set only in the light block would leak into dark mode.
+const overrideKeys = [...new Set([...Object.keys(changed.light), ...Object.keys(changed.dark)])];
+for (const id of ['light', 'dark']) for (const k of overrideKeys) if (!(k in all[id])) throw new Error(`token ${k} missing in ${id}`);
+const overrides = (id) => Object.fromEntries(overrideKeys.map((k) => [k, all[id][k]]));
+const overrideBlock = (id) => Object.entries(overrides(id)).map(([k, v]) => `  --cds-${k}: ${v};`).join('\n');
+write(P('theme/keepia-carbon.css'), `/* Keepia Carbon theme: overrides on top of @carbon/styles. Load after Carbon's CSS.
+   Generated by scripts/build.mjs from theme/brand.json. Do not edit. */
+:root, .cds--white, [data-theme="light"] {\n${overrideBlock('light')}\n}
+.cds--g100, [data-theme="dark"] {\n${overrideBlock('dark')}\n}
+`);
+const scssMap = (id) => Object.entries(overrides(id)).map(([k, v]) => `  ${k}: ${v},`).join('\n');
+write(P('theme/_index.scss'), `// Keepia Carbon theme for Sass. Generated by scripts/build.mjs. Do not edit.
+//   @use '@keepia/design-system/theme' as keepia;
+//   @use '@carbon/styles/scss/theme' with ($theme: keepia.$g100);
+// Component tokens (button, notification) do not follow a custom theme map in Sass:
+// include keepia.overrides-light / keepia.overrides-dark on the element that carries the theme.
+@use 'sass:map';
+@use '@carbon/styles/scss/themes';
+
+$overrides-white: (\n${scssMap('light')}\n);
+$overrides-g100: (\n${scssMap('dark')}\n);
+
+$white: map.merge(themes.$white, $overrides-white);
+$g100: map.merge(themes.$g100, $overrides-g100);
+
+@mixin overrides-light { @each $k, $v in $overrides-white { --cds-#{$k}: #{$v}; } }
+@mixin overrides-dark { @each $k, $v in $overrides-g100 { --cds-#{$k}: #{$v}; } }
+`);
+write(P('theme/tokens.json'), JSON.stringify({ light: all.light, dark: all.dark, changed }, null, 1) + '\n');
+
+// ---------------------------------------------------------------- fonts
+// IBM Plex as pklnx/design-system ships it: Sans for text and the wordmark, Mono for Carbon's code styles.
+export const FONTS = [
+  ['plex-sans', 'IBMPlexSans-Light.woff2'],
+  ['plex-sans', 'IBMPlexSans-Regular.woff2'],
+  ['plex-sans', 'IBMPlexSans-Italic.woff2'],
+  ['plex-sans', 'IBMPlexSans-SemiBold.woff2'],
+  ['plex-mono', 'IBMPlexMono-Regular.woff2'],
+  ['plex-mono', 'IBMPlexMono-SemiBold.woff2'],
+];
+fs.rmSync(P('fonts'), { recursive: true, force: true });
+fs.mkdirSync(P('fonts'), { recursive: true });
+for (const [pkg, file] of FONTS) fs.copyFileSync(P('node_modules/@ibm', pkg, 'fonts/complete/woff2', file), P('fonts', file));
+const ofl = fs.readFileSync(P('node_modules/@ibm/plex-sans/fonts/complete/woff2/license.txt'), 'utf8').trim();
+write(P('fonts/OFL.txt'), ofl + '\n');
+
+// ---------------------------------------------------------------- third-party notices
+// Every package whose values or files ship: the colour values come from @carbon/themes and
+// @carbon/colors, the fonts from @ibm/plex-sans and @ibm/plex-mono.
+const pkgJson = (n) => JSON.parse(fs.readFileSync(P('node_modules', n, 'package.json'), 'utf8'));
+const licenseText = (dir) => {
+  const f = fs.readdirSync(dir).find((n) => /^(licen[cs]e|copying)(\.md|\.txt)?$/i.test(n));
+  return f ? fs.readFileSync(path.join(dir, f), 'utf8').trim() : null;
+};
+const rows = ['@carbon/colors', '@carbon/themes'].map((n) => { const j = pkgJson(n); return { n, v: j.version, l: j.license, dir: P('node_modules', n) }; });
+let notices = `# Third-party notices\n\nThe Keepia design system ships colour values and fonts from the projects below.\nGenerated by scripts/build.mjs from the installed packages. Do not edit.\n\n`;
+notices += `| Package | Version | License | Used in |\n| --- | --- | --- | --- |\n`;
+for (const r of rows) notices += `| ${r.n} | ${r.v} | ${r.l} | theme/ (token values) |\n`;
+notices += `| IBM Plex Sans, IBM Plex Mono (@ibm/plex-sans, @ibm/plex-mono) | ${pkgJson('@ibm/plex-sans').version}, ${pkgJson('@ibm/plex-mono').version} | OFL-1.1 | fonts/ |\n\n`;
+const noticeFiles = rows.map((r) => { const f = fs.readdirSync(r.dir).find((n) => /^notice(\.md|\.txt)?$/i.test(n)); return f ? { r, text: fs.readFileSync(path.join(r.dir, f), 'utf8').trim() } : null; }).filter(Boolean);
+notices += `Carbon packages are used unmodified; the Keepia theme overrides Carbon tokens through CSS custom properties and does not change Carbon source files. NOTICE files of the packages are reproduced below${noticeFiles.length ? '' : ' (none present)'}.\n\n`;
+for (const { r, text } of noticeFiles) notices += `## NOTICE: ${r.n} ${r.v}\n\n\`\`\`\n${text}\n\`\`\`\n\n`;
+const seen = new Map();
+for (const r of rows) {
+  const t = licenseText(r.dir) || `${r.l} (no license file in the package)`;
+  const key = t.replace(/\s+/g, ' ');
+  if (!seen.has(key)) seen.set(key, { text: t, pkgs: [] });
+  seen.get(key).pkgs.push(`${r.n} ${r.v}`);
+}
+for (const { text, pkgs } of seen.values()) notices += `## ${pkgs.join(', ')}\n\n\`\`\`\n${text}\n\`\`\`\n\n`;
+notices += `## IBM Plex Sans, IBM Plex Mono\n\n\`\`\`\n${ofl}\n\`\`\`\n`;
+write(P('THIRD_PARTY_NOTICES.md'), notices);
+
+const failing = report.filter((r) => r.ok === false);
+console.log('tokens changed', Object.keys(changed.light).length, '/', Object.keys(changed.dark).length, 'override names', overrideKeys.length);
+console.log('contrast pairs', report.length, 'failing', failing.map((f) => `${f.theme} ${f.fg}/${f.ground} ${f.ratio}`).join('; ') || 'none');
