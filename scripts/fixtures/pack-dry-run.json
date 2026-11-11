@@ -1,0 +1,31 @@
+[
+  {
+    "id": "@keepia/design-system@0.0.0",
+    "name": "@keepia/design-system",
+    "version": "0.0.0",
+    "size": 2870,
+    "unpackedSize": 6086,
+    "shasum": "b96f51ca15a3084991a55231d10b6ed3b2fbfe60",
+    "integrity": "sha512-P81GGEGCwmTUuSHZiLxjfiH98zNPIOqtHIm5lutLrOsx58qEWg3+Z+PCI/Fp86QfZ8puyCeVxCkD2wmo2Fknjw==",
+    "filename": "keepia-design-system-0.0.0.tgz",
+    "files": [
+      {
+        "path": "LICENSE",
+        "size": 1672,
+        "mode": 420
+      },
+      {
+        "path": "README.md",
+        "size": 3808,
+        "mode": 420
+      },
+      {
+        "path": "package.json",
+        "size": 606,
+        "mode": 420
+      }
+    ],
+    "entryCount": 3,
+    "bundled": []
+  }
+]

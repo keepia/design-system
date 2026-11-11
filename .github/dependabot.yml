@@ -1,0 +1,37 @@
+# As in pklnx/design-system and keepia/mail: weekly version updates with a
+# 14-day cooldown (Dependabot waits 14 days after a release before it proposes
+# it; security updates are exempt). No `labels`: Dependabot's default labels
+# apply.
+# npm: minor and patch updates arrive as one grouped pull request, a major
+# update as its own.
+# github-actions: "/" covers .github/workflows, the glob the composite actions
+# in .github/actions; scripts/workflows.test.mjs keeps one SHA per action
+# everywhere.
+# gomod: tools/gitleaks/go.mod, the Go version the secret scan builds gitleaks
+# with (secrets.yml, go-version-file). gitleaks itself is pinned in the
+# Makefile and bumped by hand (docs/development/index.md, "Dependencies").
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      npm-dependencies:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+  - package-ecosystem: gomod
+    directory: /tools/gitleaks
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

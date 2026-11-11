@@ -1,0 +1,24 @@
+{
+  "name": "@keepia/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Keepia design system: Carbon theme, tokens and logos of the Keepia brand",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keepia/design-system.git"
+  },
+  "homepage": "https://github.com/keepia/design-system#readme",
+  "files": [],
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=26",
+      "onFail": "warn"
+    }
+  },
+  "scripts": {
+    "build:all": "node scripts/build_all.mjs",
+    "test": "node --test \"scripts/*.test.mjs\""
+  }
+}
