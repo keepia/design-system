@@ -26,7 +26,7 @@ Commands per operation: `.claude/github-operations.md`, read before the first Gi
 - Every behaviour change has tests; a bug fix has a regression test that fails without the fix. Tests never touch the network or real credentials; they wait for signals, never for time.
 - Generated files are committed together with the change that produces them.
 - The package contents are fixed by `scripts/check-pack.mjs`.
-- Every `uses:` is pinned to one full commit SHA with a `# vX.Y.Z` comment, the same everywhere; `actions/setup-node` only in `.github/actions/setup/` (`scripts/workflows.test.mjs`). A new action or registry is a new external service and needs the maintainer's OK.
+- Every `uses:` is pinned to one full commit SHA with a `# vX.Y.Z` comment, the same everywhere; `actions/setup-node` only in `.github/actions/setup/` (`scripts/workflows.test.mjs`); workflows, the composite action and `dependabot.yml` are parsed as YAML, and their rules are in `scripts/workflow-rules.mjs`. A new action or registry is a new external service and needs the maintainer's OK.
 - Secret scan: a PR that touches `.gitleaksignore`, `.gitleaks.toml` (and files it extends), `.github/workflows/secrets.yml`, `scripts/secret-scan-*`, `tools/gitleaks/go.mod` or the gitleaks variables and targets in the `Makefile`, or adds a `gitleaks:allow` comment, merges only after the maintainer's explicit OK, noted on the PR. The reviewer checks the file list and greps the diff for `gitleaks:allow`; any hit is blocking ("needs maintainer OK", with the changed entries: file, rule id, path or fingerprint, never secret values) until the OK is there.
 
 ## Session handover

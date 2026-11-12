@@ -1,0 +1,9 @@
+# want: 8:pin 9:pin
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses:
+      - uses: ""

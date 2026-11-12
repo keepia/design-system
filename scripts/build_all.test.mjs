@@ -10,8 +10,8 @@ import { ROOT, STEPS, commandOf, runSteps } from './build_all.mjs';
 
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
 
-test('the steps are the theme build (part 2), then the logo, its sheets and its PNGs (part 3)', () => {
-  assert.deepEqual(STEPS, ['scripts/build.mjs', 'scripts/build_logo.mjs', 'scripts/build_previews.mjs', 'scripts/render_pngs.mjs']);
+test('the steps are the theme build (keepia/mail#7, part 2), the VitePress theme (part 4), then the logo, its sheets and its PNGs (part 3)', () => {
+  assert.deepEqual(STEPS, ['scripts/build.mjs', 'scripts/build_vitepress.mjs', 'scripts/build_logo.mjs', 'scripts/build_previews.mjs', 'scripts/render_pngs.mjs']);
 });
 
 test('every generator script in scripts/ is a step, and nothing else is', () => {

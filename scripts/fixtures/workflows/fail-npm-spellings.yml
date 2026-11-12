@@ -1,0 +1,57 @@
+# want: 14:npm 15:npm 16:npm 17:npm 18:npm 19:npm 20:npm 21:npm 22:npm 23:npm 24:npm 25:npm 26:npm 27:npm 28:npm 29:npm 30:npm 31:npm 32:npm 33:npm 34:npm 35:npm 36:npm 37:npm 38:npm 39:npm 40:npm 41:npm 42:npm 43:npm 44:npm 45:npm 46:npm 47:npm 50:npm 51:npm 52:npm 53:npm 54:npm 55:npm 56:npm 57:npm
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    env:
+      IBM_TELEMETRY_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm i
+      - run: npm install
+      - run: npm add x
+      - run: npm ci
+      - run: npm clean-install
+      - run: npm ic
+      - run: npm install-clean
+      - run: npm install-test
+      - run: npm it
+      - run: npm install-ci-test
+      - run: npm cit
+      - run: npm rebuild
+      - run: npm rb
+      - run: npm update
+      - run: npm exec foo
+      - run: npm x foo
+      - run: npm --prefix . ci
+      - run: npm ci --ignore-scripts
+      - run: npx foo
+      - run: pnpm install
+      - run: yarn
+      - run: corepack enable
+      - run: cd x && npm ci
+      - run: (npm install)
+      - run: true; npm install
+      - run: echo | npm install
+      - run: x=$(npm install)
+      - run: /usr/bin/npm install
+      - run: \npm ci
+      - run: '{ npm install; }'
+      - run: '"npm" install'
+      - run: npm>/dev/null install
+      - run: npm</dev/null install
+      - run: |
+          npm\
+            install
+      - run: npm test --script-shell=/bin/true
+      - run: npm run test --script-shell=true
+      - run: npm test --prefix=/tmp/x
+      - run: npm pack --dry-run --json --ignore-scripts --ignore-scripts=false
+      - run: npm pack --ignore-scripts=false
+      - run: npm testx
+      - run: npm run build:all --foreground-scripts
+      - run: npm run lint

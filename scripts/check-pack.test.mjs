@@ -73,3 +73,15 @@ test('the repository package.json has no lifecycle script', () => {
   assert.deepEqual(checkLifecycleScripts(real), []);
   assert.deepEqual(checkLifecycleScripts({}), []);
 });
+
+// Every dev dependency is pinned to one exact version (README, "Building"; lightningcss and the
+// generators' inputs must not move inside a range while the lockfile still satisfies it).
+test('every devDependency in package.json is an exact version', () => {
+  const real = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const deps = Object.entries(real.devDependencies ?? {});
+  assert.ok(deps.length >= 10, `only ${deps.length} devDependencies`);
+  const EXACT = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+  assert.deepEqual(deps.filter(([, v]) => !EXACT.test(v)).map(([n, v]) => `${n}@${v}`), []);
+  for (const bad of ['^1.33.0', '~1.33.0', '1.33', '>=1.33.0', '1.33.x', '*', 'latest']) assert.ok(!EXACT.test(bad), bad);
+  assert.equal(real.dependencies, undefined, 'the package has no dependencies of its own');
+});

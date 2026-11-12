@@ -1,0 +1,11 @@
+# want: none
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - name: x
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$TITLE"

@@ -1,0 +1,8 @@
+# want: 8:pin
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - "\u0075ses": actions/setup-go@v7

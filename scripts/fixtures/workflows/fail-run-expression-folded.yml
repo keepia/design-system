@@ -1,0 +1,10 @@
+# want: 8:run-expression
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: >
+          echo
+          ${{ github.head_ref }}

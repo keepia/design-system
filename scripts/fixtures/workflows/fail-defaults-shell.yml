@@ -1,0 +1,16 @@
+# want: 6:shell 10:shell 16:shell
+name: fixture
+on: push
+defaults:
+  run:
+    shell: "true {0}"
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: x
+    steps:
+      - run: make
+        shell: sh

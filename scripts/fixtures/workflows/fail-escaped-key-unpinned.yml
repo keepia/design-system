@@ -1,0 +1,8 @@
+# want: 8:pin
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - "u\x73es": actions/setup-go@v7

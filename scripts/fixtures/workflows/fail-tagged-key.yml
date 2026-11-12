@@ -1,0 +1,8 @@
+# want: 8:subset 8:subset
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - !!binary dXNlcw==: actions/setup-go@v7

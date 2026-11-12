@@ -1,0 +1,8 @@
+# want: 8:local-action
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/other
