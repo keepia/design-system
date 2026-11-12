@@ -6,8 +6,9 @@
 //   npm run build:all
 //
 // Part 2 of keepia/mail#7 adds the theme (build.mjs: tokens, Carbon overrides, contrast report,
-// fonts, notices). The logo (part 3: build_logo.mjs, render_pngs.mjs) and the VitePress theme
-// (part 4) add theirs, each after the steps whose output it reads. All steps are Node scripts.
+// fonts, notices); part 4 the VitePress theme (build_vitepress.mjs, which reads
+// theme/tokens.json). The logo (part 3: build_logo.mjs, render_pngs.mjs) adds its steps, each
+// after the steps whose output it reads. All steps are Node scripts.
 //
 // The script stops at the first failing step and exits non-zero.
 
@@ -18,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // The scripts, relative to the repository root, in their order.
-export const STEPS = ['scripts/build.mjs'];
+export const STEPS = ['scripts/build.mjs', 'scripts/build_vitepress.mjs'];
 
 // The step as the command a person types: node scripts/build.mjs.
 export const commandOf = (script) => `node ${script}`;
