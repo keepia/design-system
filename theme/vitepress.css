@@ -350,13 +350,20 @@
 /* DocSearch (Algolia search): no brand-1 text on brand-soft; see DOCSEARCH_MAP in scripts/vitepress-map.mjs. */
 :root:root:root {
   --docsearch-soft-primary-color: #ffffff;
-  --docsearch-hit-highlight-color: #f4f4f4;
+  --docsearch-hit-highlight-color: #9ef0f0;
   --docsearch-success-color: #defbe6;
 }
 :root:root:root.dark {
   --docsearch-soft-primary-color: #161616;
-  --docsearch-hit-highlight-color: #262626;
+  --docsearch-hit-highlight-color: #022b30;
   --docsearch-success-color: #262626;
+}
+/* The selected hit and a hovered recent conversation keep the brand-soft ground; their brand-1 text becomes text-primary. */
+.DocSearch-Hit[aria-selected=true] {
+  --docsearch-highlight-color: var(--vp-c-text-1);
+}
+.DocSearch-Sidepanel-RecentConversation {
+  --docsearch-sidepanel-accent: var(--vp-c-text-1);
 }
 @font-face {
   font-family: "IBM Plex Sans";

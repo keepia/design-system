@@ -209,30 +209,70 @@ export const MAP = {
 // which @imports @docsearch/css) paints three grounds with --vp-c-brand-soft through these
 // variables, under brand-1 text: the hovered action and the sidepanel's submit button
 // (--docsearch-soft-primary-color, with --docsearch-highlight-color / -primary-color text) and
-// the keyboard-selected hit with its marked text (--docsearch-hit-highlight-color); the copied
-// button uses --docsearch-success-color. Brand-1 never sits on brand-soft (3.84:1 in White), so
-// these grounds get tokens brand-1 reads on (technical decision, keepia/mail#34): the hover
-// ground is the page background (the search modal is layer-01), the selected hit is layer-01
-// (the hits are the page background), the copied button Carbon's success notification ground.
+// the keyboard-selected hit with its marked text, action and icon
+// (--docsearch-hit-highlight-color); the copied button uses --docsearch-success-color.
+// Brand-1 never sits on brand-soft (3.84:1 in White), so (technical decision, keepia/mail#34)
+// the hover ground is the page background (the search modal is layer-01), and the copied
+// button Carbon's success notification ground.
+// The selected hit keeps the Teal ground, `highlight` (= brand-soft), and its brand-1 text
+// becomes text-primary instead (maintainer decision, keepia/mail#37): see DOCSEARCH_SELECTED_HIT.
 // The fixture's @docsearch/css is the lowest version VitePress's ^4.7.0 range allows.
 export const DOCSEARCH_CSS_VERSION = '4.7.0';
 export const DOCSEARCH_MAP = {
   '--docsearch-soft-primary-color': T('background'),
-  '--docsearch-hit-highlight-color': T('layer-01'),
+  '--docsearch-hit-highlight-color': T('highlight'),
   '--docsearch-success-color': T('notification-background-success'),
 };
 // styles/docsearch.css sets the DocSearch variables in `:root:root` (0,2,0), and it loads after
 // this file, so the overrides need more specificity: (0,3,0), and (0,4,0) for G100.
 export const DOCSEARCH_SELECTORS = { light: ':root:root:root', dark: ':root:root:root.dark' };
-// The text pairs of those grounds, each with the DocSearch rules that render it (file and
-// selector in the fixture). The test resolves them through every captured stylesheet.
+// With --docsearch-hit-highlight-color on brand-soft, the brand-1 text on it becomes
+// text-primary (--vp-c-text-1, one rule for both themes). Set on the element, a variable
+// reaches its descendants by inheritance, whatever the specificity of DocSearch's :root
+// definitions (all of them are on the root element), and nowhere else:
+//   - the selected hit: @docsearch/css draws its marked text, action and icon in
+//     --docsearch-highlight-color; the other hits and the hovered action keep brand-1;
+//   - a recent conversation in the sidepanel: hovered or focused, it has the same ground,
+//     and its action and icon use --docsearch-sidepanel-accent, which DocSearch's :root
+//     sets to --docsearch-highlight-color (only those two use it inside the conversation).
+export const DOCSEARCH_SELECTED_HIT = {
+  selector: '.DocSearch-Hit[aria-selected=true]',
+  vars: { '--docsearch-highlight-color': 'var(--vp-c-text-1)' },
+};
+export const DOCSEARCH_SCOPED = [
+  DOCSEARCH_SELECTED_HIT,
+  { selector: '.DocSearch-Sidepanel-RecentConversation', vars: { '--docsearch-sidepanel-accent': 'var(--vp-c-text-1)' } },
+];
+// The text pairs of those grounds, each with the DocSearch rules that render the text and,
+// where it matters, the rule that paints the ground (file and selector in the fixture). The
+// test resolves them through every captured stylesheet, in the context of those selectors
+// (the text sits inside the ground).
 const DS = '@docsearch/css/dist/style.css';
+const SP = '@docsearch/css/dist/sidepanel.css';
+const SELECTED_HIT = [DS, '.DocSearch-Hit[aria-selected=true] a'];
+const SELECTED_ASK_AI = [DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit--AskAI'];
 export const DOCSEARCH_PAIRS = [
   { fg: '--docsearch-highlight-color', on: '--docsearch-soft-primary-color', rules: [[DS, '.DocSearch-Action:hover'], [DS, '.DocSearch-AskAi-Return:hover']], where: 'hovered action' },
   { fg: '--docsearch-primary-color', on: '--docsearch-soft-primary-color', rules: [['styles/docsearch.css', '.DocSearch-Sidepanel-Prompt--submit']], where: 'sidepanel submit' },
-  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-highlight-color', rules: [[DS, '.DocSearch-Hit[aria-selected=true] a'], [DS, '.DocSearch-Hit[aria-selected=true] mark']], where: 'selected hit, marked text and action' },
-  { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', rules: [[DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-title']], where: 'selected hit title' },
-  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-background', rules: [[DS, '.DocSearch-Hit a']], where: 'marked text in a hit' },
+  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_HIT, rules: [[DS, '.DocSearch-Hit[aria-selected=true] mark'], [DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-action'], [DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-icon'], [DS, '.DocSearch-Hit mark'], [DS, '.DocSearch-Hits mark']], where: 'selected hit: marked text, action, icon' },
+  { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_HIT, rules: [[DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-title'], [DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-text'], [DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-Tree'], [DS, '.DocSearch-Hit-Container']], where: 'selected hit: title, text, tree' },
+  { fg: '--docsearch-secondary-text-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_HIT, rules: [[DS, '.DocSearch-Hit-path']], where: 'selected hit: path' },
+  { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_ASK_AI, rules: [[DS, '.DocSearch-Hit-AskAIButton']], where: 'selected Ask AI hit: text' },
+  { fg: '--docsearch-hit-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_ASK_AI, rules: [[DS, '.DocSearch-Hit-AskAIButton-title']], where: 'selected Ask AI hit: title' },
+  { fg: '--docsearch-icon-color', on: '--docsearch-hit-highlight-color', ground: SELECTED_ASK_AI, rules: [[DS, '.DocSearch-Hit-AskAIButton-icon']], where: 'selected Ask AI hit: icon' },
+  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-background', ground: [DS, '.DocSearch-Hit a'], rules: [[DS, '.DocSearch-Hit mark']], where: 'marked text in a hit' },
+  { fg: '--docsearch-icon-color', on: '--docsearch-hit-highlight-color', ground: [DS, '.DocSearch-AskAiScreen-ActionButton:hover'], rules: [[DS, '.DocSearch-AskAiScreen-ActionButton svg']], where: 'hovered Ask AI action button' },
+  { fg: '--docsearch-icon-color', on: '--docsearch-success-color', ground: [DS, '.DocSearch-AskAiScreen-CopyButton--copied'], rules: [[DS, '.DocSearch-AskAiScreen-ActionButton svg']], where: 'copied button' },
+  { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', ground: [DS, '.DocSearch-AskAiScreen-RelatedSources-Item-Link:hover'], rules: [[DS, '.DocSearch-AskAiScreen-RelatedSources-Item-Link']], where: 'hovered related source: text' },
+  { fg: '--docsearch-icon-color', on: '--docsearch-hit-highlight-color', ground: [DS, '.DocSearch-AskAiScreen-RelatedSources-Item-Link:hover'], rules: [[DS, '.DocSearch-AskAiScreen-RelatedSources-Item-Link svg']], where: 'hovered related source: icon' },
+  ...[':hover', ':focus-within'].flatMap((state) => {
+    const ground = [SP, `.DocSearch-Sidepanel-RecentConversation${state}`];
+    return [
+      { fg: '--docsearch-sidepanel-accent', on: '--docsearch-hit-highlight-color', ground, rules: [[SP, `.DocSearch-Sidepanel-RecentConversation${state} .DocSearch-Hit-action`], [SP, `.DocSearch-Sidepanel-RecentConversation${state} .DocSearch-Sidepanel-RecentConversation-icon`]], where: `recent conversation (${state}): action, icon` },
+      { fg: '--docsearch-sidepanel-text-base', on: '--docsearch-hit-highlight-color', ground, rules: [[SP, '.DocSearch-Sidepanel-RecentConversation']], where: `recent conversation (${state}): text` },
+      { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', ground, rules: [[SP, '.DocSearch-Sidepanel-RecentConversation-container']], where: `recent conversation (${state}): container` },
+    ];
+  }),
 ];
 
 // Custom properties that are not colours, the same in both themes. The font stacks are
@@ -520,6 +560,8 @@ export function vitepressCss(tokens, fonts, icons) {
   css += block('.dark', { ...themeValues(tokens, 'dark'), ...statics, ...iconProperties(tokens, 'dark', icons.shapes, icons.black) });
   css += '/* DocSearch (Algolia search): no brand-1 text on brand-soft; see DOCSEARCH_MAP in scripts/vitepress-map.mjs. */\n';
   for (const theme of ['light', 'dark']) css += block(DOCSEARCH_SELECTORS[theme], themeValues(tokens, theme, DOCSEARCH_MAP));
+  css += '/* The selected hit and a hovered recent conversation keep the brand-soft ground; their brand-1 text becomes text-primary. */\n';
+  for (const s of DOCSEARCH_SCOPED) css += block(s.selector, s.vars);
   for (const f of FONT_FACES) {
     css += block('@font-face', {
       'font-family': `"${f.family}"`,
