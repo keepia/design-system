@@ -125,10 +125,12 @@ function themePanel(kit, geo, t, variant, y0, ground, groundName, mono) {
   const F = 40;
   const lock = embed(`keepia-lockup-${variant}.svg`, 0, 0, { h: (geo.lockups.keepia.horizontal.tile.size / geo.text.fontSize) * F });
   const lc = (geo.clearSpace / geo.grid) * lock.h;
-  // Each item is the logo with its clear space drawn as a frame in `highlight` around it.
+  // Each item is the logo with its clear space drawn as a frame around it, in `border-strong-01`
+  // (at least 3:1 against background and layer-01 in both themes, so the frame shows on G100).
+  const zone = t['border-strong-01'];
   add(row(kit, t, PAD, y, [
-    item(tile + 2 * c, tile + 2 * c, (x, yy) => `${frame(t.highlight, x + c, yy + c, tile, tile, c)}\n${embed('keepia-mark.svg', x + c, yy + c, { w: tile }).markup}`, `${fmt(c, 2)} px around a ${tile} px tile`),
-    item(lock.w + 2 * lc, lock.h + 2 * lc, (x, yy) => `${frame(t.highlight, x + lc, yy + lc, lock.w, lock.h, lc)}\n${embed(`keepia-lockup-${variant}.svg`, x + lc, yy + lc, { h: lock.h }).markup}`, `${fmt(lc, 2)} px around a lockup with a ${fmt(lock.h, 2)} px tile`),
+    item(tile + 2 * c, tile + 2 * c, (x, yy) => `${frame(zone, x + c, yy + c, tile, tile, c)}\n${embed('keepia-mark.svg', x + c, yy + c, { w: tile }).markup}`, `${fmt(c, 2)} px around a ${tile} px tile`),
+    item(lock.w + 2 * lc, lock.h + 2 * lc, (x, yy) => `${frame(zone, x + lc, yy + lc, lock.w, lock.h, lc)}\n${embed(`keepia-lockup-${variant}.svg`, x + lc, yy + lc, { h: lock.h }).markup}`, `${fmt(lc, 2)} px around a lockup with a ${fmt(lock.h, 2)} px tile`),
   ], 48));
 
   head('Lockups');
@@ -159,7 +161,9 @@ function themePanel(kit, geo, t, variant, y0, ground, groundName, mono) {
   head('Browser tab, 16 px favicon');
   const tabW = 240;
   const tabH = 36;
-  const tabGround = variant === 'light' ? t['layer-01'] : t['layer-02'];
+  // The tab carries the Teal tile, so in G100 it sits only on an allowed ground (README, "Logo":
+  // background or layer-01): layer-01 on the background panel, background on the layer-01 panel.
+  const tabGround = variant === 'light' || ground === t.background ? t['layer-01'] : t.background;
   out.push(`<rect fill="${tabGround}" x="${PAD}" y="${fmt(y, 2)}" width="${tabW}" height="${tabH}" rx="8"/>`);
   out.push(raster(r16, PAD + 12, y + 10, 1));
   out.push(kit.label(t['text-primary'], 'Keepia Mail', PAD + 36, y + 22, 13).markup);

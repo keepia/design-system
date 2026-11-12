@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import opentype from 'opentype.js';
 import { markGeometry, outline } from './build_logo.mjs';
+import { parts } from './build_previews.mjs';
 import { ratio } from './contrast.mjs';
 import { decodeRGBA, ihdr, readIco, render, sha256, textChunks } from './png.mjs';
 
@@ -422,8 +423,29 @@ test('the sign-off sheets draw the favicon rasters pixel for pixel as favicon-16
     }
   }
   assert.ok(checked >= 6, `${checked} rasters`);
-  // N3: the G100 sheet shows no tile on layer-02.
+});
+
+test('N3: the G100 sheet shows a layer-02 strip with the white mark and no tile, and no tile elsewhere on layer-02', () => {
   const g100 = brandFile('preview-g100.svg');
-  const tail = g100.slice(g100.lastIndexOf(`fill="${tokens.dark['layer-02']}" x="0"`));
-  assert.ok(tail.length > 0 && !tail.includes(TEAL60), 'no tile on G100 layer-02');
+  const L2 = tokens.dark['layer-02'];
+  const strip = g100.lastIndexOf(`<rect fill="${L2}" x="0"`);
+  assert.ok(strip >= 0, 'the layer-02 strip is on the sheet');
+  const tail = g100.slice(strip);
+  assert.ok(!tail.includes(TEAL60), 'no tile on G100 layer-02');
+  assert.ok(tail.includes(parts(brandFile('keepia-mark-white.svg')).body), 'the white mark on layer-02');
+  // Nothing else is drawn on layer-02 (the browser tabs, which carry the tile, use allowed grounds).
+  const rects = [...g100.matchAll(new RegExp(`<rect fill="${L2}" ([^>]*)/>`, 'g'))];
+  assert.deepEqual(rects.map((m) => m.index), [strip], 'layer-02 is used only for the strip');
+});
+
+test('the clear-space frames are border-strong-01 and reach 3:1 against background and layer-01 in both themes', () => {
+  for (const [f, theme] of [['preview-white.svg', 'light'], ['preview-g100.svg', 'dark']]) {
+    const T = tokens[theme];
+    const frames = [...brandFile(f).matchAll(/<path fill="([^"]+)" fill-rule="evenodd" d="M[^"]* H/g)].map((m) => m[1]);
+    assert.ok(frames.length >= 2, `${f}: clear-space frames`);
+    for (const c of frames) {
+      assert.equal(c, T['border-strong-01'], `${f}: frame colour`);
+      for (const g of ['background', 'layer-01']) assert.ok(ratio(c, T[g]) >= 3, `${f}: frame on ${g} ${ratio(c, T[g]).toFixed(2)}`);
+    }
+  }
 });

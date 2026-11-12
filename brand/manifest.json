@@ -70,8 +70,8 @@
       "width": 1200,
       "height": 2599,
       "source": "brand/preview-g100.svg",
-      "sourceSha256": "28503d9404c9ebffb4a76e352c23816995a30769cdec62d48d018c14e1198ff8",
-      "sha256": "c6b627d679f8404cc78c23522aa1fcbcda91323e7c2b716e70855a0e1d2d18e0"
+      "sourceSha256": "fa6d7b7443becf74a4053b4811521ddad5e6e66e2b80005f4dc153ccd181551e",
+      "sha256": "d199d4662497471fb3f14c0f6bec4603af4fbc7e012d97986666c3ea64ca697c"
     },
     {
       "path": "brand/preview-icons.png",
@@ -86,8 +86,8 @@
       "width": 1200,
       "height": 1200,
       "source": "brand/preview-white.svg",
-      "sourceSha256": "47c48ab6012b748f9cdf41255d7482b54ccf5f2f14ec99a8a2409ebed1d1dba1",
-      "sha256": "3086f5637ab82fc863ee3dfd59548078d4eeee8bda5aa69dd2f35cecf717da47"
+      "sourceSha256": "ea43ff16bf548b83451703248ddcb9d091724d9e8201e34c28f7e665b0c39aa2",
+      "sha256": "031e42cbd5ffd6840195d8ed54261a0ac48c665af991ad09d66b5c0353bc2735"
     }
   ],
   "ico": {
