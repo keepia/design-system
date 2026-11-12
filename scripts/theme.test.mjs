@@ -212,7 +212,7 @@ test('THIRD_PARTY_NOTICES.md names the shipped packages at their installed versi
   const v = (n) => require(`${n}/package.json`).version;
   assert.ok(notices.includes(`| @carbon/colors | ${v('@carbon/colors')} | Apache-2.0 |`));
   assert.ok(notices.includes(`| @carbon/themes | ${v('@carbon/themes')} | Apache-2.0 |`));
-  assert.ok(notices.includes(`| ${v('@ibm/plex-sans')}, ${v('@ibm/plex-mono')} | OFL-1.1 | fonts/ |`));
+  assert.ok(notices.includes(`| ${v('@ibm/plex-sans')}, ${v('@ibm/plex-mono')} | OFL-1.1 | fonts/, logo outlines in brand/ |`));
   assert.match(notices, /Apache License\s+Version 2\.0/);
   assert.match(notices, /SIL OPEN FONT LICENSE Version 1\.1/);
 });

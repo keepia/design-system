@@ -1,0 +1,107 @@
+{
+  "renderer": "@resvg/resvg-js 2.6.2",
+  "pngs": [
+    {
+      "path": "brand/apple-touch-icon.png",
+      "width": 180,
+      "height": 180,
+      "source": "brand/apple-touch-icon.svg",
+      "sourceSha256": "f9a6673d11269c01be1c6191dcc02ef87c08c60aeea1f142166d2444c9b0badb",
+      "sha256": "a297a0ffe5c86e697ec1aea4a80eabc20a11e6026d55380dbd7982ffef847b65"
+    },
+    {
+      "path": "brand/favicon-16.png",
+      "width": 16,
+      "height": 16,
+      "source": "brand/keepia-mark.svg",
+      "sourceSha256": "289b2217c36d5d345e0a7bf1fa8481d3fca446ec2d18cc23912b67bc1c113778",
+      "sha256": "018aa5468c86aa1cf1375b42cbc38fa3b76df29d75cf661d546282f3cbf4c080"
+    },
+    {
+      "path": "brand/favicon-32.png",
+      "width": 32,
+      "height": 32,
+      "source": "brand/keepia-mark.svg",
+      "sourceSha256": "289b2217c36d5d345e0a7bf1fa8481d3fca446ec2d18cc23912b67bc1c113778",
+      "sha256": "07f9c0bf90bb0377f976e1f45434c9edcbf7d4c136634d7a7b0bcfa2691bf684"
+    },
+    {
+      "path": "brand/favicon-48.png",
+      "width": 48,
+      "height": 48,
+      "source": "brand/keepia-mark.svg",
+      "sourceSha256": "289b2217c36d5d345e0a7bf1fa8481d3fca446ec2d18cc23912b67bc1c113778",
+      "sha256": "69a26c547ef1d4abcbbecb4d2e7aa4f2edf4237d87ac4774f2030d3fcf3c4fc4"
+    },
+    {
+      "path": "brand/icon-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "source": "brand/apple-touch-icon.svg",
+      "sourceSha256": "f9a6673d11269c01be1c6191dcc02ef87c08c60aeea1f142166d2444c9b0badb",
+      "sha256": "e22a9757ec94053054e319ad6928ce733f2af10c055939cb51a1dc62eb83ffa7"
+    },
+    {
+      "path": "brand/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "source": "brand/keepia-mark.svg",
+      "sourceSha256": "289b2217c36d5d345e0a7bf1fa8481d3fca446ec2d18cc23912b67bc1c113778",
+      "sha256": "f65e9b6472814c3d9322b3d381d9f48f0f52a99ea5abfc8c39cdbdd4e87a7431"
+    },
+    {
+      "path": "brand/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "source": "brand/keepia-mark.svg",
+      "sourceSha256": "289b2217c36d5d345e0a7bf1fa8481d3fca446ec2d18cc23912b67bc1c113778",
+      "sha256": "1e1db89804a5ae192de6d05d384cec3fc2fe4d381e3df5cf6f2df9ae9cae3076"
+    },
+    {
+      "path": "brand/icon-maskable-512.png",
+      "width": 512,
+      "height": 512,
+      "source": "brand/icon-maskable.svg",
+      "sourceSha256": "43c107a2988d1922a6d2de56c26b43b102b95af0e6def32c241e356befc574be",
+      "sha256": "004f68d1e44d5f3c5fe88d0fff0e73cdcffd000adfa76f13d4da5932080de521"
+    },
+    {
+      "path": "brand/preview-g100.png",
+      "width": 1200,
+      "height": 2599,
+      "source": "brand/preview-g100.svg",
+      "sourceSha256": "28503d9404c9ebffb4a76e352c23816995a30769cdec62d48d018c14e1198ff8",
+      "sha256": "c6b627d679f8404cc78c23522aa1fcbcda91323e7c2b716e70855a0e1d2d18e0"
+    },
+    {
+      "path": "brand/preview-icons.png",
+      "width": 1200,
+      "height": 1340,
+      "source": "brand/preview-icons.svg",
+      "sourceSha256": "320229346bb3f108fcf8f7bba0121c30c5ab0cb5e9d327b5fc07d761e40e2314",
+      "sha256": "74dc753d2f49f1c92697c0e4305feaddb25f38c303423d3f9b93158d7521e065"
+    },
+    {
+      "path": "brand/preview-white.png",
+      "width": 1200,
+      "height": 1200,
+      "source": "brand/preview-white.svg",
+      "sourceSha256": "47c48ab6012b748f9cdf41255d7482b54ccf5f2f14ec99a8a2409ebed1d1dba1",
+      "sha256": "3086f5637ab82fc863ee3dfd59548078d4eeee8bda5aa69dd2f35cecf717da47"
+    }
+  ],
+  "ico": {
+    "path": "brand/favicon.ico",
+    "sizes": [
+      16,
+      32,
+      48
+    ],
+    "sources": [
+      "brand/favicon-16.png",
+      "brand/favicon-32.png",
+      "brand/favicon-48.png"
+    ],
+    "sha256": "626346584c5bdf2c065c761a501633264846b6863fcc6c942c582174138df7d4"
+  }
+}
