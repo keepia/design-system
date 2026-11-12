@@ -21,7 +21,8 @@ parses every workflow, the composite action `.github/actions/setup` and
 `.github/dependabot.yml` with the [`yaml`](https://www.npmjs.com/package/yaml)
 package and checks the parsed structure, not the text. The rules and the
 policy table are in `scripts/workflow-rules.mjs`; every finding names
-`file:line` and a rule id. Every other YAML file under `.github` fails the
+`file:line` and a rule id. Every other YAML file under `.github` (the
+extension in any case) and every other file in `.github/workflows` fails the
 test unless it is listed there (`.github/ISSUE_TEMPLATE/config.yml` is
 checked for the YAML subset only). A new workflow needs a policy entry. A new
 action is a new external service and needs the maintainer's OK.
@@ -30,7 +31,9 @@ action is a new external service and needs the maintainer's OK.
 directive; no anchors, aliases or merge keys; no tags (`!!str` included); no
 explicit `?` keys; no duplicate keys; only string keys. Quoted and escaped
 keys count under their decoded name (`"u\x73es"` is `uses`), and comments
-count for nothing. A file outside this subset fails; it is not interpreted.
+count for nothing. Action inputs (`with:`) are compared case-insensitively,
+as GitHub does, and two inputs that differ only in case fail. A file outside
+this subset fails; it is not interpreted.
 Values are compared exactly, so `persist-credentials: no` is the string `no`,
 not `false`.
 
@@ -53,7 +56,11 @@ not `false`.
   in the policy) and `steps`, and their steps only `name`, `id`, `uses`,
   `with`, `run`, `env` and `shell`; the same holds for the steps of the
   composite action. So there is no `if`, `continue-on-error`, `needs`,
-  `strategy` or `defaults` on them [`required`].
+  `strategy` or `defaults` on them. A step's `env` sets only the names the
+  policy lists for that step name (today only `secret-scan`'s "Scan the new
+  commits" and the setup action's install step), so `BASH_ENV`,
+  `npm_config_*` or `MAKEFLAGS` cannot turn a required check green without
+  running it [`required`].
 - No `run` value contains `${{` [`run-expression`]. Pass values through
   `env:` and use `"$VAR"`. A `run` value is a string, and a plain one has no
   trailing comment [`run`]. `shell` is `bash`, and `defaults` sets only
@@ -69,7 +76,8 @@ not `false`.
 - CI's step "Generated files are committed" runs exactly `npm run build:all`
   and keeps its drift check, and the README calls the same entry point
   [`build-entry`]. `run` calls only the scripts the policy lists with `node
-  scripts/…` (today `check-pack.mjs` in `ci.yml`) [`scripts`].
+  scripts/…`, also after node options or in quotes (today `check-pack.mjs`
+  in `ci.yml`) [`scripts`].
 - Dependabot covers npm, the workflows and the composite action, and
   `tools/gitleaks`, weekly with a 14-day cooldown, exactly as in the policy
   [`dependabot`].
@@ -80,7 +88,9 @@ the real files; every rule id has at least one red case there.
 
 **What it does not check.**
 - Shell semantics. It reads command words, so `npm` behind a variable, an
-  alias, `eval` or shell quoting inside the word (`n""pm`) is not seen. The
+  alias, `eval` or shell quoting inside the word (`n""pm`) is not seen; a
+  command word ends at the first character that is not part of a name, so
+  `npm>x`, `npm<x` and `npm\` at the end of a line are seen. The
   review covers that, as for any workflow change (risk class (a)).
 - Expressions in `with:` inputs of an action (for example a script input),
   and in `env:` values (that is the allowed way). A new action needs the

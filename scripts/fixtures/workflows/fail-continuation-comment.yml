@@ -1,0 +1,9 @@
+# want: 9:flow-uses
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - {name: "a
+        # ", uses: actions/setup-go@v7}

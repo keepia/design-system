@@ -1,4 +1,4 @@
-# want: 8:scripts
+# want: 8:scripts 9:scripts 10:scripts 11:scripts
 name: fixture
 on: push
 jobs:
@@ -6,3 +6,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: node scripts/build.mjs
+      - run: node --import ./x.mjs scripts/build.mjs
+      - run: node "scripts/build.mjs"
+      - run: cd . && node ./scripts/build.mjs

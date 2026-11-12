@@ -29,7 +29,9 @@ const REQUIRED_ON = { push: { branches: ['main'] }, pull_request: null };
 
 // One entry per workflow in .github/workflows; a workflow without an entry fails (scope).
 // `jobs` lists every job: `permissions` absent means the job has no `permissions` key;
-// `required` jobs are the required checks of the ruleset; `env` is a required job's exact env.
+// `required` jobs are the required checks of the ruleset; `env` is a required job's exact env;
+// `stepEnv` names, per step name, the env variables a step of a required job may set (a step
+// not listed sets none), so BASH_ENV, npm_config_* or MAKEFLAGS cannot turn it green.
 // `scripts` are the files under scripts/ a `run` may call with node (per job, else per file).
 export const POLICY = {
   workflows: {
@@ -38,7 +40,7 @@ export const POLICY = {
       permissions: { contents: 'read' },
       on: REQUIRED_ON,
       scripts: ['check-pack.mjs'],
-      jobs: { check: { required: true, env: TELEMETRY } },
+      jobs: { check: { required: true, env: TELEMETRY, stepEnv: {} } },
       buildEntry: { job: 'check', step: 'Generated files are committed', commands: ['npm run build:all'] },
     },
     'secrets.yml': {
@@ -46,10 +48,17 @@ export const POLICY = {
       permissions: { contents: 'read' },
       on: REQUIRED_ON,
       scripts: [],
-      jobs: { 'secret-scan': { required: true } },
+      jobs: {
+        'secret-scan': {
+          required: true,
+          stepEnv: { 'Scan the new commits': ['EVENT', 'BASE_SHA', 'HEAD_SHA', 'BEFORE_SHA', 'AFTER_SHA'] },
+        },
+      },
     },
   },
   actionKeys: ['name', 'description', 'runs'],
+  // The env names, per step name, a step of a composite action may set.
+  actionStepEnv: { 'Install dependencies without install scripts': Object.keys(TELEMETRY) },
   dependabot: {
     version: 2,
     updates: [
@@ -141,6 +150,8 @@ export function parseYaml(file, src) {
 const keyOf = (pair) => (isScalar(pair.key) && typeof pair.key.value === 'string' ? pair.key.value : undefined);
 const pairOf = (map, name) => (isMap(map) ? map.items.find((p) => keyOf(p) === name) : undefined);
 const valueOf = (map, name) => pairOf(map, name)?.value;
+// Action inputs (`with`) are case-insensitive on GitHub.
+const inputOf = (map, name) => (isMap(map) ? map.items.find((p) => keyOf(p)?.toLowerCase() === name) : undefined);
 const str = (node) => (isScalar(node) && typeof node.value === 'string' ? node.value : undefined);
 const keysOf = (map) => (isMap(map) ? map.items.map(keyOf) : []);
 
@@ -176,7 +187,9 @@ function pairs(root) {
 
 // ---- run values: command words
 
-const CMD = /(?:^|[\s;&|(){}!`$"'\/\\])(npm|npx|pnpm|yarn|corepack)(?=$|[\s;&|)`"'])/g;
+// A command word ends at the first character that cannot be part of a name, so `npm>x`,
+// `npm<x` and `npm\` + newline count too.
+const CMD = /(?:^|[\s;&|(){}!`$"'\/\\])(npm|npx|pnpm|yarn|corepack)(?![\w.-])/g;
 // The npm commands a `run` may contain. `ci --ignore-scripts` exactly is allowed in the setup
 // action only (and there once; checkTree counts it).
 function npmProblem(word, rest, file) {
@@ -192,7 +205,10 @@ function npmProblem(word, rest, file) {
 export function commandWords(run) {
   return [...run.matchAll(CMD)].map((m) => ({ word: m[1], rest: run.slice(m.index + m[0].length) }));
 }
-const SCRIPT = /(?:^|[\s;&|(`$"'])node[ \t]+(?:\.\/)?scripts\/([^\s;&|)`"']+)/g;
+// `node` as a command word, then its arguments up to the end of the command; any argument
+// under scripts/ counts, also after options (`node --import x scripts/…`) and in quotes.
+const NODE = /(?:^|[\s;&|(){}!`$"'\/\\])node(?![\w.-])([^;&|\n]*)/g;
+const SCRIPT_ARG = /(?:^|[\s"'=])(?:\.\/)?scripts\/([^\s;&|)`"']+)/g;
 
 // ---- checks
 
@@ -216,6 +232,14 @@ export function checkFile(file, src, ctx) {
     const key = keyOf(pair);
     const value = pair.value;
     if (key === 'uses') checkUses(pair, [...ancestors, map], src, file, ctx, add, line);
+    if (key === 'with' && isMap(value)) {
+      const seen = new Set();
+      for (const p of value.items) {
+        const k = keyOf(p)?.toLowerCase();
+        if (k !== undefined && seen.has(k)) add(p.key, 'subset', `input ${keyOf(p)} repeats another input that differs only in case`);
+        seen.add(k);
+      }
+    }
     if (key === 'node-version') add(pair.key, 'node-version', 'node-version names a Node version; use node-version-file: .node-version in the setup action');
     if (key === 'shell' && str(value) !== 'bash') add(pair.key, 'shell', `shell ${JSON.stringify(toJS(value))}; only bash`);
     if (key === 'defaults') {
@@ -236,7 +260,7 @@ export function checkFile(file, src, ctx) {
   // Every checkout drops its credentials.
   for (const { pair, map } of all) {
     if (keyOf(pair) !== 'uses' || !/^actions\/checkout@/i.test(str(pair.value) ?? '')) continue;
-    const pc = pairOf(valueOf(map, 'with'), 'persist-credentials');
+    const pc = inputOf(valueOf(map, 'with'), 'persist-credentials');
     if (!(isScalar(pc?.value) && pc.value.value === false)) {
       add(pc?.key ?? pair.key, 'persist-credentials', 'actions/checkout without persist-credentials: false');
     }
@@ -280,8 +304,10 @@ function checkRun(pair, src, file, add) {
 }
 
 function checkScripts(pair, allowed, add) {
-  for (const m of str(pair.value).matchAll(SCRIPT)) {
-    if (!allowed.includes(m[1])) add(pair.key, 'scripts', `node scripts/${m[1]} is not in the policy`);
+  for (const cmd of str(pair.value).matchAll(NODE)) {
+    for (const m of cmd[1].matchAll(SCRIPT_ARG)) {
+      if (!allowed.includes(m[1])) add(pair.key, 'scripts', `node scripts/${m[1]} is not in the policy`);
+    }
   }
 }
 
@@ -294,10 +320,18 @@ const stepsOf = (map, add, where) => {
 const runsNpm = (steps) => steps.some((s) => commandWords(str(valueOf(s, 'run')) ?? '').length > 0);
 const usesOf = (step) => str(valueOf(step, 'uses')) ?? '';
 
-function checkStepKeys(steps, add, where) {
+// `stepEnv`: per step name, the env names the step may set.
+function checkStepKeys(steps, stepEnv, add, where) {
   for (const step of steps) {
     for (const p of step.items) {
       if (!REQUIRED_STEP_KEYS.includes(keyOf(p))) add(p.key, 'required', `${where}: step key ${keyOf(p)} is not allowed`);
+    }
+    const env = pairOf(step, 'env');
+    if (!env) continue;
+    const allowed = stepEnv[str(valueOf(step, 'name'))] ?? [];
+    if (!isMap(env.value)) { add(env.key, 'required', `${where}: step env is not a mapping`); continue; }
+    for (const p of env.value.items) {
+      if (!allowed.includes(keyOf(p))) add(p.key, 'required', `${where}: step env ${keyOf(p)} is not in the policy`);
     }
   }
 }
@@ -311,7 +345,7 @@ function checkAction(file, root, add) {
   for (const p of runs.items) if (!['using', 'steps'].includes(keyOf(p))) add(p.key, 'top-keys', `runs.${keyOf(p)} is not allowed`);
   if (str(valueOf(runs, 'using')) !== 'composite') add(pairOf(runs, 'using')?.key ?? runs, 'setup', 'the action is not using: composite');
   const steps = stepsOf(runs, add, file);
-  checkStepKeys(steps, add, file);
+  checkStepKeys(steps, POLICY.actionStepEnv, add, file);
   for (const step of steps) {
     const run = pairOf(step, 'run');
     if (run && str(run.value) !== undefined) checkScripts(run, [], add);
@@ -372,7 +406,7 @@ function checkWorkflow(root, policy, add) {
       }
     }
     const steps = stepsOf(job, add, `job ${id}`);
-    if (jobPolicy?.required) checkStepKeys(steps, add, `job ${id}`);
+    if (jobPolicy?.required) checkStepKeys(steps, jobPolicy.stepEnv ?? {}, add, `job ${id}`);
     const allowed = jobPolicy?.scripts ?? policy.scripts;
     for (const step of steps) {
       const run = pairOf(step, 'run');
@@ -432,14 +466,17 @@ export function classify(file) {
 export function checkTree(files) {
   const findings = [];
   const pins = [];
-  const yamlFiles = files.filter((f) => f.path.startsWith('.github/') && /\.ya?ml$/.test(f.path)).sort((a, b) => a.path.localeCompare(b.path));
+  // In scope: every YAML file under .github, the extension compared case-insensitively, and
+  // every file in .github/workflows whatever its extension.
+  const yamlFiles = files.filter((f) => f.path.startsWith('.github/') && (/\.ya?ml$/i.test(f.path) || f.path.startsWith('.github/workflows/')))
+    .sort((a, b) => a.path.localeCompare(b.path));
   const actions = new Set(yamlFiles.filter((f) => classify(f.path)?.kind === 'action').map((f) => `./${path(f.path)}`));
   for (const name of Object.keys(POLICY.workflows)) {
     if (!yamlFiles.some((f) => f.path === `.github/workflows/${name}`)) findings.push({ file: `.github/workflows/${name}`, line: 1, rule: 'scope', message: 'a policy entry without a workflow' });
   }
   for (const f of yamlFiles) {
     const c = classify(f.path);
-    if (!c) { findings.push({ file: f.path, line: 1, rule: 'scope', message: 'a YAML file under .github that no rule covers (a new workflow needs a policy entry)' }); continue; }
+    if (!c) { findings.push({ file: f.path, line: 1, rule: 'scope', message: 'a YAML file under .github, or a file in .github/workflows, that no rule covers (a new workflow needs a policy entry)' }); continue; }
     findings.push(...checkFile(f.path, f.src, { ...c, actions, pins }));
   }
   // The one install: `npm ci --ignore-scripts`, once, in the setup action.

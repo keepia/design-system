@@ -1,4 +1,4 @@
-# want: 8:run
+# want: 8:run 9:run
 name: fixture
 on: push
 jobs:
@@ -6,3 +6,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: make test #x
+      - run: make test	#x

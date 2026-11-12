@@ -48,7 +48,7 @@ test('the real files give no findings', () => {
 test('every YAML file under .github parses within the subset and is covered by a rule', () => {
   assertNone('parse', 'subset', 'scope', 'top-keys');
   assert.deepEqual(Object.keys(POLICY.workflows).sort(), workflows.map((w) => path.basename(w.path)), 'the policy covers exactly the workflows present');
-  for (const f of TREE.filter((x) => /\.ya?ml$/.test(x.path))) assert.ok(classify(f.path), `${f.path} is covered`);
+  for (const f of TREE.filter((x) => /\.ya?ml$/i.test(x.path) || x.path.startsWith('.github/workflows/'))) assert.ok(classify(f.path), `${f.path} is covered`);
   for (const [name, p] of Object.entries(POLICY.workflows)) {
     for (const k of ['topKeys', 'permissions', 'on', 'scripts', 'jobs']) assert.ok(p[k] !== undefined, `${name}: the policy sets ${k}`);
   }
@@ -178,7 +178,7 @@ test('a run value is a string without ${{ }}, a plain one without a trailing com
 // ---- fixtures
 
 const fixtureNames = readdirSync(FIXTURES).filter((n) => n.endsWith('.yml')).sort();
-const FIXTURE_COUNT = 66;
+const FIXTURE_COUNT = 78;
 const wantOf = (src, name) => {
   const m = /^# want: (.*?)\r?$/m.exec(src);
   assert.ok(m, `${name}: a "# want:" line`);
@@ -271,6 +271,25 @@ const MUTATIONS = [
   ['new', 'Dependabot cooldown 7 days', [[DEPENDABOT, '      default-days: 14\n', '      default-days: 7\n']], [`${DEPENDABOT}:15:dependabot`]],
   ['new', 'Dependabot without gomod', [[DEPENDABOT, '  - package-ecosystem: gomod\n    directory: /tools/gitleaks\n', '  - package-ecosystem: pip\n    directory: /\n']], [`${DEPENDABOT}:32:dependabot`]],
   ['new', 'an anchor in the issue template config', [[ISSUES, 'blank_issues_enabled: true\n', 'blank_issues_enabled: &t true\n']], [`${ISSUES}:1:subset`]],
+  // Review A on #4, B1: one red case per check.
+  ['A B1 1', 'top-level permissions absent', [[SECRETS, 'permissions:\n  contents: read\n\n', '']], [`${SECRETS}:1:permissions`]],
+  ['A B1 2', 'env on secret-scan', [[SECRETS, '    timeout-minutes: 15\n', '    timeout-minutes: 15\n    env:\n      BASH_ENV: x\n']], [`${SECRETS}:28:required`]],
+  ['A B1 3', 'setup action before the checkout', [[CI, '      - uses: ./.github/actions/setup\n\n', ''], [CI, `      - uses: ${CO}\n`, `      - uses: ./.github/actions/setup\n      - uses: ${CO}\n`]], [`${CI}:28:setup`]],
+  ['A B1 4', 'an extra top-level key in dependabot.yml', [[DEPENDABOT, 'updates:\n', 'registries:\n  x:\n    type: npm-registry\n    url: https://npm.example.invalid\nupdates:\n']], [`${DEPENDABOT}:14:dependabot`]],
+  ['A B1 5', 'the same SHA with another version comment', [[SECRETS, CO, CO.replace('# v7.0.1', '# v7.0.2')]], [`${SECRETS}:29:pin`]],
+  ['A B1 6', 'npm pack without --ignore-scripts', [[CI, 'npm pack --dry-run --json --ignore-scripts |', 'npm pack --dry-run --json |']], [`${CI}:55:npm`]],
+  ['A B1 7', 'the setup action without setup-node', [[SETUP_ACTION, '    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0\n      with:\n        node-version-file: .node-version\n        package-manager-cache: false\n\n', '']], [`${SETUP_ACTION}:8:setup`]],
+  ['A B1 8', 'setup-node in another composite action', [['.github/actions/other/action.yml', null, 'name: other\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0\n      with:\n        node-version-file: .node-version\n']], ['.github/actions/other/action.yml:5:setup']],
+  ['A B1 9', 'runs.pre in the setup action', [[SETUP_ACTION, '  using: composite\n', '  using: composite\n  pre: x.js\n']], [`${SETUP_ACTION}:9:top-keys`]],
+  // Review A on #4, N1: the env names of required steps are fixed in the policy.
+  ['A N1', 'BASH_ENV on the Tests step', [[CI, '        run: npm test\n', '        env:\n          BASH_ENV: ./x\n        run: npm test\n']], [`${CI}:53:required`]],
+  ['A N1', 'npm_config_script_shell on the Tests step', [[CI, '        run: npm test\n', '        env:\n          npm_config_script_shell: /bin/true\n        run: npm test\n']], [`${CI}:53:required`]],
+  ['A N1', 'MAKEFLAGS on "Scan the new commits"', [[SECRETS, '          EVENT: ${{ github.event_name }}\n', '          EVENT: ${{ github.event_name }}\n          MAKEFLAGS: n\n']], [`${SECRETS}:43:required`]],
+  ['A N1', 'an env on the setup action step that runs setup-node', [[SETUP_ACTION, '        package-manager-cache: false\n', '        package-manager-cache: false\n      env:\n        NODE_OPTIONS: --require ./x.js\n']], [`${SETUP_ACTION}:15:required`]],
+  // Review A on #4, N4: scope is case-insensitive and covers every file in .github/workflows.
+  ['A N4', 'a workflow named evil.YML', [['.github/workflows/evil.YML', null, 'name: evil\non: push\njobs: {}\n']], ['.github/workflows/evil.YML:1:scope']],
+  ['A N4', 'a file in .github/workflows without a YAML extension', [['.github/workflows/evil.txt', null, 'name: evil\n']], ['.github/workflows/evil.txt:1:scope']],
+  ['A N4', 'action.YML', [['.github/actions/setup/action.YML', null, 'name: x\n']], ['.github/actions/setup/action.YML:1:scope']],
 ];
 
 const mutate = (edits) => {

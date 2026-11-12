@@ -1,0 +1,9 @@
+# want: 8:subset 8:flow-uses 9:subset 7:run
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - &s {uses: actions/setup-go@v7}
+      - *s
