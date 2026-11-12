@@ -299,6 +299,12 @@ const MUTATIONS = [
   // Review B on #4, F2: a required job checks out the PR's own code.
   ['B F2', 'ref: main on the checkout of check', [[CI, '          persist-credentials: false\n', '          persist-credentials: false\n          ref: main\n']], [`${CI}:38:required`]],
   ['B F2', 'repository: someone/fork on the checkout of secret-scan', [[SECRETS, '          fetch-depth: 0\n', '          fetch-depth: 0\n          repository: someone/fork\n']], [`${SECRETS}:33:required`]],
+  // Delta reviews on #4: A B2 (the checkStepKeys branches), B N-e and N-h.
+  ['A B2 1', 'step env that is not a mapping', [[CI, '        run: npm test\n', `        env: \${{ fromJSON('{"BASH_ENV":"x"}') }}\n        run: npm test\n`]], [`${CI}:52:required`]],
+  ['A B2 2', 'an allowed env name on another step', [[SECRETS, '      - run: make secrets-test\n', '      - run: make secrets-test\n        env:\n          EVENT: x\n']], [`${SECRETS}:40:required`]],
+  ['A B2 3', 'BASH_ENV on the setup install step', [[SETUP_ACTION, "        IBM_TELEMETRY_DISABLED: 'true'\n", "        IBM_TELEMETRY_DISABLED: 'true'\n        BASH_ENV: x\n"]], [`${SETUP_ACTION}:19:required`, `${SETUP_ACTION}:20:setup`]],
+  ['B N-e', 'a second checkout with ref: main in check', [[CI, '      - name: Generated files are committed\n', `      - uses: ${CO}\n        with:\n          persist-credentials: false\n          ref: main\n\n      - name: Generated files are committed\n`]], [`${CI}:44:required`]],
+  ['B N-h', 'Actions/Checkout with ref: main in check', [[CI, `      - uses: ${CO}\n        with:\n          persist-credentials: false\n`, `      - uses: ${CO.replace('actions/checkout', 'Actions/Checkout')}\n        with:\n          persist-credentials: false\n          ref: main\n`]], [`${CI}:38:required`]],
   // Review B on #4: one red case per surviving mutation.
   ['B M11', "telemetry 'false' on the setup action's npm step", [[SETUP_ACTION, "        IBM_TELEMETRY_DISABLED: 'true'\n", "        IBM_TELEMETRY_DISABLED: 'false'\n"]], [`${SETUP_ACTION}:19:setup`]],
   ['B M14', 'an extra npm run line in the build entry step', [[CI, '          npm run build:all\n', '          npm run build:all\n          npm run build:all\n']], [`${CI}:42:build-entry`]],
