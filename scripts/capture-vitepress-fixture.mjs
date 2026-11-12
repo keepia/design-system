@@ -1,17 +1,21 @@
 // Captures what theme/vitepress.css has to know about VitePress's default theme into
 // scripts/fixtures/vitepress-<version>.json, which the tests read (no network in tests).
 // Ported from pklnx/design-system (keepia/mail#7, part 4); the colour declarations
-// (colorRules, varValues) are new here, for the brand-soft guard.
+// (colorRules), the custom properties of every captured stylesheet (customProperties) and
+// the @docsearch/css stylesheets that styles/docsearch.css @imports are new here, for the
+// brand-soft guard.
 //
 // Run it by hand when the products upgrade VitePress (they pin it exactly), from the
-// repository root, on the unpacked npm tarball:
+// repository root, on the unpacked npm tarballs of VitePress and of the @docsearch/css version
+// DOCSEARCH_CSS_VERSION in scripts/vitepress-map.mjs names:
 //
 //   dir="$(mktemp -d)"
-//   (cd "$dir" && npm pack vitepress@2.0.0-alpha.20 && tar -xzf vitepress-2.0.0-alpha.20.tgz)
-//   node scripts/capture-vitepress-fixture.mjs "$dir/package"
+//   (cd "$dir" && npm pack vitepress@2.0.0-alpha.20 @docsearch/css@4.7.0 \
+//     && mkdir vp ds && tar -xzf vitepress-2.0.0-alpha.20.tgz -C vp && tar -xzf docsearch-css-4.7.0.tgz -C ds)
+//   node scripts/capture-vitepress-fixture.mjs "$dir/vp/package" "$dir/ds/package"
 //
-// (An installed copy works too: node scripts/capture-vitepress-fixture.mjs
-// <dir>/node_modules/vitepress.) Then set VITEPRESS_VERSION in scripts/vitepress-map.mjs,
+// (Installed copies work too: node scripts/capture-vitepress-fixture.mjs
+// <dir>/node_modules/vitepress <dir>/node_modules/@docsearch/css.) Then set VITEPRESS_VERSION in scripts/vitepress-map.mjs,
 // delete the old fixture and run `npm test`: every new VitePress rule that sets a corner, an
 // outline or a font fails the tests until scripts/vitepress-map.mjs overrides it or keeps it
 // with a reason.
@@ -34,6 +38,7 @@
 // Separately (colorRules) it records every rule that sets the text colour or a background
 // (COLOR_PROPERTIES), so the tests can check which colours VitePress paints on which ground.
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseCss, specificity, splitTopLevel } from './css-selectors.mjs';
@@ -98,26 +103,41 @@ function styleBlocks(src) {
   return blocks;
 }
 
-export function capture(pkgDir) {
+// The stylesheets a component imports from its <script> (`import "../styles/x.css"`), as paths
+// relative to the theme directory.
+function importedStyles(themeDir, file) {
+  const src = fs.readFileSync(path.join(themeDir, file), 'utf8');
+  return [...src.matchAll(/^import\s+["']([^"']+\.css)["']/gm)]
+    .map((m) => path.relative(themeDir, path.resolve(path.dirname(path.join(themeDir, file)), m[1])).split(path.sep).join('/'));
+}
+
+// The @docsearch/css stylesheets a stylesheet @imports (`@import '@docsearch/css/dist/x.css'`).
+const docsearchImports = (css) => [...css.matchAll(/@import\s+['"]@docsearch\/css\/([^'"]+)['"]/g)].map((m) => m[1]);
+
+// docsearchDir: the @docsearch/css package that styles/docsearch.css @imports; by default the
+// one installed next to vitepress.
+export function capture(pkgDir, docsearchDir = path.dirname(createRequire(path.join(pkgDir, 'package.json')).resolve('@docsearch/css/package.json'))) {
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
   if (pkg.name !== 'vitepress') throw new Error(`${pkgDir} is not the vitepress package`);
+  const dsPkg = JSON.parse(fs.readFileSync(path.join(docsearchDir, 'package.json'), 'utf8'));
+  if (dsPkg.name !== '@docsearch/css') throw new Error(`${docsearchDir} is not the @docsearch/css package`);
   const themeDir = path.join(pkgDir, 'dist/client/theme-default');
   const rel = (f) => path.relative(themeDir, f).split(path.sep).join('/');
   const asyncFiles = asyncComponents(themeDir);
+  // Stylesheets that only async components import load after theme/vitepress.css, like the
+  // components themselves (styles/docsearch.css, through VPAlgoliaSearchBox).
+  const asyncStyles = asyncFiles.flatMap((f) => importedStyles(themeDir, f));
+  const loadsAsync = (file) => asyncFiles.includes(file) || asyncStyles.includes(file);
 
-  // vars.css: the custom properties per selector (selectors kept as written), and their
-  // values (a later declaration in the same selector wins, as in the cascade).
+  // vars.css: the custom properties per selector (selectors kept as written).
   const varsFile = path.join(themeDir, 'styles/vars.css');
   const vars = {};
-  const varValues = {};
   for (const r of parseCss(fs.readFileSync(varsFile, 'utf8')).rules) {
-    const decls = r.decls.filter((d) => d.prop.startsWith('--'));
-    if (!decls.length) continue;
+    const names = r.decls.map((d) => d.prop).filter((p) => p.startsWith('--'));
+    if (!names.length) continue;
     const key = r.media ? `@media ${r.media} { ${r.selector} }` : r.selector;
-    vars[key] = [...new Set([...(vars[key] ?? []), ...decls.map((d) => d.prop)])].sort();
-    varValues[key] = { ...varValues[key], ...Object.fromEntries(decls.map((d) => [d.prop, d.value])) };
+    vars[key] = [...new Set([...(vars[key] ?? []), ...names])].sort();
   }
-  for (const key of Object.keys(varValues)) varValues[key] = Object.fromEntries(Object.entries(varValues[key]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
   // The root classes of every component.
   const roots = {};
@@ -131,33 +151,49 @@ export function capture(pkgDir) {
     ...listFiles(path.join(themeDir, 'styles'), '.css').map((f) => ({ f, blocks: [{ scoped: false, css: fs.readFileSync(f, 'utf8'), lineOffset: 0 }] })),
   ].sort((a, b) => rel(a.f).localeCompare(rel(b.f)));
 
+  // `rules` (pklnx's capture) reads only the VitePress theme. The colour declarations and the
+  // custom properties also read the @docsearch/css files a stylesheet @imports, just before
+  // that stylesheet, as the cascade has them; Algolia's own corner, outline and font rules
+  // are not classified (the products use the local search).
   const rules = [];
   const colorRules = [];
+  const customProperties = [];
+  const record = (file, b, colourOnly, isAsync) => {
+    for (const r of parseCss(b.css).rules) {
+      for (const d of r.decls) {
+        const custom = d.prop.startsWith('--');
+        const into = custom ? customProperties : !colourOnly && PROPERTIES.includes(d.prop) ? rules : COLOR_PROPERTIES.includes(d.prop) ? colorRules : null;
+        if (!into) continue;
+        if (r.parents.length) throw new Error(`${file}:${r.line + b.lineOffset}: nested rule sets ${d.prop}; extend the capture`);
+        for (const selector of splitTopLevel(r.selector, ',')) {
+          const entry = {
+            file,
+            line: r.line + b.lineOffset,
+            selector: selector.replace(/\s+/g, ' '),
+            property: d.prop,
+            value: d.value,
+            important: d.important,
+            media: r.media,
+            layer: r.layer,
+            scoped: b.scoped,
+            async: into === rules ? asyncFiles.includes(file) : isAsync,
+            specificity: specificity(selector, { scoped: b.scoped }),
+          };
+          into.push(entry);
+        }
+      }
+    }
+  };
+  const docsearchFiles = [];
   for (const { f, blocks } of sources) {
     const file = rel(f);
     for (const b of blocks) {
-      for (const r of parseCss(b.css).rules) {
-        for (const d of r.decls) {
-          const into = PROPERTIES.includes(d.prop) ? rules : COLOR_PROPERTIES.includes(d.prop) ? colorRules : null;
-          if (!into) continue;
-          if (r.parents.length) throw new Error(`${file}:${r.line + b.lineOffset}: nested rule sets ${d.prop}; extend the capture`);
-          for (const selector of splitTopLevel(r.selector, ',')) {
-            into.push({
-              file,
-              line: r.line + b.lineOffset,
-              selector: selector.replace(/\s+/g, ' '),
-              property: d.prop,
-              value: d.value,
-              important: d.important,
-              media: r.media,
-              layer: r.layer,
-              scoped: b.scoped,
-              async: asyncFiles.includes(file),
-              specificity: specificity(selector, { scoped: b.scoped }),
-            });
-          }
-        }
+      for (const sub of docsearchImports(b.css)) {
+        const dsFile = `@docsearch/css/${sub}`;
+        docsearchFiles.push(dsFile);
+        record(dsFile, { css: fs.readFileSync(path.join(docsearchDir, sub), 'utf8'), lineOffset: 0, scoped: false }, true, loadsAsync(file));
       }
+      record(file, b, false, loadsAsync(file));
     }
   }
   return {
@@ -169,21 +205,22 @@ export function capture(pkgDir) {
     vars,
     rules,
     colorProperties: COLOR_PROPERTIES,
-    varValues,
+    docsearch: { version: dsPkg.version, files: docsearchFiles },
+    customProperties,
     colorRules,
   };
 }
 
 function main() {
-  const dir = process.argv[2];
+  const [dir, docsearchDir] = process.argv.slice(2);
   if (!dir) {
-    console.error('usage: node scripts/capture-vitepress-fixture.mjs <unpacked vitepress package dir>');
+    console.error('usage: node scripts/capture-vitepress-fixture.mjs <unpacked vitepress package dir> [<unpacked @docsearch/css package dir>]');
     process.exit(2);
   }
-  const data = capture(path.resolve(dir));
+  const data = docsearchDir ? capture(path.resolve(dir), path.resolve(docsearchDir)) : capture(path.resolve(dir));
   const out = fileURLToPath(new URL(`./fixtures/vitepress-${data.version}.json`, import.meta.url));
   fs.writeFileSync(out, `${JSON.stringify(data, null, 1)}\n`);
-  console.log(`${path.relative(process.cwd(), out)}: ${data.rules.length} rules, ${data.colorRules.length} colour rules, ${Object.keys(data.vars).length} variable blocks, async ${data.asyncComponents.join(', ')}`);
+  console.log(`${path.relative(process.cwd(), out)}: ${data.rules.length} rules, ${data.colorRules.length} colour rules, ${data.customProperties.length} custom properties, ${Object.keys(data.vars).length} variable blocks, @docsearch/css ${data.docsearch.version}, async ${data.asyncComponents.join(', ')}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

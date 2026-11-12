@@ -204,6 +204,37 @@ export const MAP = {
   ...Object.fromEntries(Object.entries(STRIPES).map(([kind, token]) => [`--keepia-vp-stripe-${kind}`, T(token)])),
 };
 
+// ---------------------------------------------------------------- DocSearch
+// VitePress's Algolia search (styles/docsearch.css, loaded with the async VPAlgoliaSearchBox,
+// which @imports @docsearch/css) paints three grounds with --vp-c-brand-soft through these
+// variables, under brand-1 text: the hovered action and the sidepanel's submit button
+// (--docsearch-soft-primary-color, with --docsearch-highlight-color / -primary-color text) and
+// the keyboard-selected hit with its marked text (--docsearch-hit-highlight-color); the copied
+// button uses --docsearch-success-color. Brand-1 never sits on brand-soft (3.84:1 in White), so
+// these grounds get tokens brand-1 reads on (technical decision, keepia/mail#34): the hover
+// ground is the page background (the search modal is layer-01), the selected hit is layer-01
+// (the hits are the page background), the copied button Carbon's success notification ground.
+// The fixture's @docsearch/css is the lowest version VitePress's ^4.7.0 range allows.
+export const DOCSEARCH_CSS_VERSION = '4.7.0';
+export const DOCSEARCH_MAP = {
+  '--docsearch-soft-primary-color': T('background'),
+  '--docsearch-hit-highlight-color': T('layer-01'),
+  '--docsearch-success-color': T('notification-background-success'),
+};
+// styles/docsearch.css sets the DocSearch variables in `:root:root` (0,2,0), and it loads after
+// this file, so the overrides need more specificity: (0,3,0), and (0,4,0) for G100.
+export const DOCSEARCH_SELECTORS = { light: ':root:root:root', dark: ':root:root:root.dark' };
+// The text pairs of those grounds, each with the DocSearch rules that render it (file and
+// selector in the fixture). The test resolves them through every captured stylesheet.
+const DS = '@docsearch/css/dist/style.css';
+export const DOCSEARCH_PAIRS = [
+  { fg: '--docsearch-highlight-color', on: '--docsearch-soft-primary-color', rules: [[DS, '.DocSearch-Action:hover'], [DS, '.DocSearch-AskAi-Return:hover']], where: 'hovered action' },
+  { fg: '--docsearch-primary-color', on: '--docsearch-soft-primary-color', rules: [['styles/docsearch.css', '.DocSearch-Sidepanel-Prompt--submit']], where: 'sidepanel submit' },
+  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-highlight-color', rules: [[DS, '.DocSearch-Hit[aria-selected=true] a'], [DS, '.DocSearch-Hit[aria-selected=true] mark']], where: 'selected hit, marked text and action' },
+  { fg: '--docsearch-text-color', on: '--docsearch-hit-highlight-color', rules: [[DS, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-title']], where: 'selected hit title' },
+  { fg: '--docsearch-highlight-color', on: '--docsearch-hit-background', rules: [[DS, '.DocSearch-Hit a']], where: 'marked text in a hit' },
+];
+
 // Custom properties that are not colours, the same in both themes. The font stacks are
 // Carbon's (@carbon/type), passed in by the build.
 export const staticProperties = (fonts) => ({
@@ -456,9 +487,9 @@ export const ICON_GEOMETRY = [
 ];
 export const ICON_BEFORE = (kind) => `.custom-block.${kind} > .custom-block-title::before`;
 
-// Resolves MAP for one theme against tokens.json.
-export function themeValues(tokens, theme) {
-  return Object.fromEntries(Object.entries(MAP).map(([name, t]) => {
+// Resolves MAP (or another map of the same shape) for one theme against tokens.json.
+export function themeValues(tokens, theme, map = MAP) {
+  return Object.fromEntries(Object.entries(map).map(([name, t]) => {
     const token = t[theme];
     if (token === 'transparent') return [name, 'transparent'];
     const v = tokens[theme][token];
@@ -487,6 +518,8 @@ export function vitepressCss(tokens, fonts, icons) {
 `;
   css += block(':root', { ...themeValues(tokens, 'light'), ...statics, ...iconProperties(tokens, 'light', icons.shapes, icons.black) });
   css += block('.dark', { ...themeValues(tokens, 'dark'), ...statics, ...iconProperties(tokens, 'dark', icons.shapes, icons.black) });
+  css += '/* DocSearch (Algolia search): no brand-1 text on brand-soft; see DOCSEARCH_MAP in scripts/vitepress-map.mjs. */\n';
+  for (const theme of ['light', 'dark']) css += block(DOCSEARCH_SELECTORS[theme], themeValues(tokens, theme, DOCSEARCH_MAP));
   for (const f of FONT_FACES) {
     css += block('@font-face', {
       'font-family': `"${f.family}"`,

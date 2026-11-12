@@ -18,14 +18,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { rootClasses } from './capture-vitepress-fixture.mjs';
+import { createHash } from 'node:crypto';
+import { COLOR_PROPERTIES, rootClasses } from './capture-vitepress-fixture.mjs';
 // lightningcss is an exact pin in package.json (README, "Building" says why).
 import { transform as lightningTransform } from 'lightningcss';
 import {
   compareSpecificity, compoundsOf, elementOf, formatSpecificity, parseCss, selectorMatches, selectorMatchesPath, specificity, splitTopLevel, subjectCompound,
 } from './css-selectors.mjs';
 import {
-  BLOCK_ICONS, CLASSIFIED, CLASSIFIED_GROUPS, CORNERS, CUSTOM_BLOCK_ELEMENTS, FONT_FACES, ICON_MODULES, KEPT, LEGAL_COMMENT, MAP, iconNotice, PAIRS, RINGS, RING_GROUNDS, RULES, STRIPES, VITEPRESS_VERSION, isTargetValue, staticProperties,
+  BLOCK_ICONS, CLASSIFIED, CLASSIFIED_GROUPS, CORNERS, CUSTOM_BLOCK_ELEMENTS, DOCSEARCH_CSS_VERSION, DOCSEARCH_MAP, DOCSEARCH_PAIRS, DOCSEARCH_SELECTORS, FONT_FACES, ICON_MODULES, KEPT, LEGAL_COMMENT, MAP, iconNotice, PAIRS, RINGS, RING_GROUNDS, RULES, STRIPES, VITEPRESS_VERSION, isTargetValue, staticProperties,
 } from './vitepress-map.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -183,25 +184,48 @@ test('vitepress.css is flat: only @font-face at-rules, at the top level', () => 
   }
 });
 
-test('vitepress.css: exactly the :root and .dark blocks set custom properties, the same set', () => {
+const docsearchBlocks = () => ({ light: variableBlock(DOCSEARCH_SELECTORS.light), dark: variableBlock(DOCSEARCH_SELECTORS.dark) });
+
+test('vitepress.css: exactly the :root and .dark blocks and the two DocSearch blocks set custom properties, each pair the same set', () => {
   const { light, dark } = blocks();
   const setters = parsed.rules.filter((r) => r.decls.some(isCustom)).map((r) => r.selector);
-  assert.deepEqual(setters, [':root', '.dark']);
+  assert.deepEqual(setters, [':root', '.dark', ':root:root:root', ':root:root:root.dark']);
+  assert.deepEqual(DOCSEARCH_SELECTORS, { light: ':root:root:root', dark: ':root:root:root.dark' });
   assert.deepEqual([...dark.keys()].sort(), [...light.keys()].sort());
   const icons = Object.keys(BLOCK_ICONS).map((kind) => `--keepia-vp-icon-${kind}`);
   assert.deepEqual([...light.keys()].sort(), [...Object.keys(MAP), ...Object.keys(staticProperties(families)), ...icons].sort());
+  const ds = docsearchBlocks();
+  assert.deepEqual([...ds.light.keys()], Object.keys(DOCSEARCH_MAP));
+  assert.deepEqual([...ds.dark.keys()], Object.keys(DOCSEARCH_MAP));
 });
 
-test('vitepress.css: its own variables are --keepia-vp-*, every other one is a --vp-* variable', () => {
+test('vitepress.css: its own variables are --keepia-vp-*, the others --vp-* or, in the DocSearch blocks, --docsearch-* variables DocSearch defines', () => {
   const css = read(CSS_PATH);
   assert.ok(!/pklnx/i.test(css), 'no pklnx name is left');
   for (const name of blocks().light.keys()) assert.match(name, /^--(vp|keepia-vp)-[a-z0-9-]+$/, name);
   for (const m of css.matchAll(/var\((--[\w-]+)\)/g)) assert.match(m[1], /^--(vp|keepia-vp)-/, m[1]);
+  const defined = new Set(fixture.customProperties.filter((d) => d.file.startsWith('@docsearch/css/') || d.file === 'styles/docsearch.css').map((d) => d.property));
+  for (const name of docsearchBlocks().light.keys()) {
+    assert.match(name, /^--docsearch-[a-z-]+$/, name);
+    assert.ok(defined.has(name), `${name} is not a DocSearch variable`);
+  }
+});
+
+test('vitepress.css: the DocSearch blocks out-rank every DocSearch definition of their variables, the dark one the light one', () => {
+  // styles/docsearch.css loads after this file (async VPAlgoliaSearchBox), so a tie is not enough.
+  const light = specificity(DOCSEARCH_SELECTORS.light);
+  const dark = specificity(DOCSEARCH_SELECTORS.dark);
+  assert.ok(compareSpecificity(dark, light) > 0);
+  const theirs = fixture.customProperties.filter((d) => d.property in DOCSEARCH_MAP);
+  assert.ok(theirs.some((d) => d.file === 'styles/docsearch.css' && d.selector === ':root:root'), "VitePress's :root:root definitions are captured");
+  for (const d of theirs) assert.ok(compareSpecificity(light, d.specificity) > 0, `${d.file} ${d.selector} ${formatSpecificity(d.specificity)} ties or beats ${DOCSEARCH_SELECTORS.light}`);
 });
 
 test('vitepress.css: every colour equals tokens.json for its mapped token', () => {
   const b = blocks();
+  const ds = docsearchBlocks();
   for (const theme of ['light', 'dark']) {
+    for (const [name, t] of Object.entries(DOCSEARCH_MAP)) assert.equal(ds[theme].get(name), tokens[theme][t[theme]], `${theme} ${name} (${t[theme]})`);
     for (const [name, t] of Object.entries(MAP)) {
       let want = t[theme] === 'transparent' ? 'transparent' : tokens[theme][t[theme]];
       assert.ok(want, `${theme}: token ${t[theme]} missing in tokens.json`);
@@ -275,8 +299,24 @@ test('contrast: every pair VitePress renders with the mapped variables, in both 
       if (!(r >= p.min)) failing.push(`${theme} ${p.fg} on ${ground}: ${r.toFixed(2)} < ${p.min} (${p.where})`);
     }
   }
-  assert.ok(n >= 200, `only ${n} pairs`);
+  assert.equal(n, 232, 'pklnx\'s PAIRS: 116 grounds per theme');
   assert.deepEqual(failing, []);
+});
+
+// The plan keeps pklnx's PAIRS, its double ring and its token map unchanged: the same JSON as
+// pklnx/design-system 13e5f8b scripts/vitepress-map.mjs, with --pklnx-vp- for --keepia-vp-.
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+const asPklnx = (o) => JSON.stringify(o).replaceAll('--keepia-vp-', '--pklnx-vp-');
+test("PAIRS, the double ring and MAP are pklnx's, unchanged apart from the prefix", () => {
+  assert.equal(sha256(asPklnx(PAIRS)), 'f29de7479ac52b8d6abe1964da3faf09fd444cc873281536094eae856593c886', 'PAIRS');
+  assert.equal(sha256(asPklnx(MAP)), '2304c74e84bd7cd309e7e0a75badee6dafa59b49ea355a3755bd75d2e57e74a4', 'MAP');
+  assert.deepEqual(RING_GROUNDS, ['--vp-button-brand-bg', '--vp-button-brand-hover-bg', '--vp-button-brand-active-bg', '--vp-button-alt-bg', '--vp-button-alt-hover-bg', '--vp-button-alt-active-bg']);
+  assert.deepEqual(RINGS, ['--keepia-vp-focus', '--keepia-vp-focus-inset']);
+  // Spelled out for the pairs the plan names: links and link hover at 4.5 on the page grounds.
+  const brand1 = PAIRS.find((p) => p.fg === '--vp-c-brand-1');
+  assert.deepEqual(brand1, { fg: '--vp-c-brand-1', on: ['--vp-c-bg', '--vp-c-bg-alt', '--vp-c-bg-soft', '--vp-c-bg-elv', '--vp-c-default-soft', '--vp-sidebar-bg-color', '--vp-local-search-result-bg'], min: 4.5, where: 'links, active nav and menu link' });
+  assert.deepEqual(PAIRS.find((p) => p.fg === '--vp-c-brand-2'), { fg: '--vp-c-brand-2', on: ['--vp-c-bg', '--vp-c-bg-alt', '--vp-c-bg-soft'], min: 4.5, where: 'link hover' });
+  for (const p of PAIRS) assert.ok([4.5, 3, 1.05].includes(p.min), `${p.where}: min ${p.min}`);
 });
 
 test("contrast: Carbon's double focus ring reaches 3:1 on every button state", () => {
@@ -289,26 +329,94 @@ test("contrast: Carbon's double focus ring reaches 3:1 on every button state", (
 
 // ---------------------------------------------------------------- brand-soft guard
 // White brand-1 on brand-soft (Teal 60 on Teal 20) is 3.84:1, below 4.5. PAIRS does not list
-// it because no rule renders brand-1 text on a brand-soft ground; this guard keeps it so. It
-// resolves every colour and background declaration of VitePress (fixture colorRules, with
-// the variable values of vars.css) and of vitepress.css through the mapped variables, and
-// fails where a rule paints the colour of --vp-c-brand-1 on, inside or below an element
-// whose background is the colour of --vp-c-brand-soft. It compares resolved colours, so a
-// variable mapped to the same token as brand-soft (or brand-1) counts too.
-// It does not see inheritance through elements its selectors do not name, nor colours set
-// by scripts or inline styles.
+// it because no rule renders brand-1 text on a brand-soft ground; this guard keeps it so.
+//
+// It resolves every colour and background declaration of the captured stylesheets (fixture
+// colorRules: VitePress's theme and the @docsearch/css files styles/docsearch.css @imports)
+// and of vitepress.css through the custom properties of all of them (fixture
+// customProperties plus vitepress.css's blocks), with the cascade: per theme, at the root
+// element the most specific and then the latest declaration wins (VitePress's sync
+// stylesheets, then vitepress.css, then the async ones: VPAlgoliaSearchBox's docsearch.css
+// with @docsearch/css, VPLocalSearchBox, VPCarbonAds). A root declaration under a condition
+// (an attribute, :where(), @media) and every declaration on another element count as
+// further possible values. Colour literals (#rgb, #rrggbb, rgb(), rgba()) are compared
+// normalised, and a multi-part `background` counts with each of its parts.
+//
+// It fails where a rule paints a colour of --vp-c-brand-1 on, inside, below or next to (a
+// shared ancestor) an element whose background can be the colour of --vp-c-brand-soft, and
+// where a colour value does not resolve (UNRESOLVED_OK lists the exceptions with reasons).
+//
+// It does not see: inheritance through elements no selector names (a parent component
+// passing brand-1 into a child component's scoped ground, an ancestor the ground's selector
+// does not name); colours inside functions (gradients, color-mix()); colours set by scripts
+// or inline styles; @docsearch/css's own corner, outline and font rules (the products use
+// the local search, pklnx's KEPT list covers styles/docsearch.css).
 
-const VAR = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/;
-// value → resolved colour, per theme: vitepress.css's variables first (it loads after
-// VitePress), then VitePress's vars.css (:root, and .dark in dark).
-function resolverFor(theme, ours) {
-  const theirs = { ...fixture.varValues[':root'], ...(theme === 'dark' ? fixture.varValues['.dark'] : {}) };
+const VAR = /^var\(\s*(--[\w-]+)\s*(?:,\s*([^]+))?\)$/;
+// A colour literal as '#rrggbb' when opaque, else 'rgba(r, g, b, a)'; other values lower-cased.
+function normColour(value) {
+  const s = value.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{3,8})$/.exec(s);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join('');
+    if (h.length !== 6 && h.length !== 8) return s;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const a = h.length === 8 ? Math.round((parseInt(h.slice(6), 16) / 255) * 1000) / 1000 : 1;
+    return a === 1 ? `#${h.slice(0, 6)}` : `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*[,\s]\s*(\d+)\s*[,\s]\s*(\d+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(s);
+  if (rgb) {
+    const a = rgb[4] === undefined ? 1 : rgb[4].endsWith('%') ? parseFloat(rgb[4]) / 100 : parseFloat(rgb[4]);
+    const [r, g, b] = rgb.slice(1, 4).map(Number);
+    return a === 1 ? `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}` : `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+  return s;
+}
+
+// Where a custom-property declaration applies in `theme`: 'root' (the root element, no
+// condition), 'conditional' (the root element under an attribute, a pseudo-class other than
+// :root, or @media), 'local' (another element) or 'off' (the other theme's root).
+const THEME_CLASSES = { light: [], dark: ['dark'] };
+function scopeOf(d, theme) {
+  const cs = compoundsOf(d.selector);
+  const c = cs[0];
+  if (cs.length !== 1 || (c.type && c.type !== 'html') || c.ids.length || c.pseudoElement) return 'local';
+  if (!c.classes.every((k) => k === 'dark')) return 'local';
+  if (!c.type && !c.classes.length && !c.attrs.length && !c.pseudos.length) return 'local';
+  if (!c.classes.every((k) => THEME_CLASSES[theme].includes(k))) return 'off';
+  return d.media || c.attrs.length || c.pseudos.some((p) => p.name !== 'root') ? 'conditional' : 'root';
+}
+
+// vitepress.css's custom properties, as the fixture records VitePress's.
+const keepiaCustomProperties = () => parsed.rules.filter((r) => r.decls.some(isCustom)).flatMap((r) => splitTopLevel(r.selector, ',')
+  .flatMap((selector) => r.decls.filter(isCustom).map((d) => ({ file: CSS_PATH, selector, property: d.prop, value: d.value, media: r.media, specificity: specificity(selector), async: false }))));
+
+// value → the colours it can resolve to in `theme` (null for a variable that does not resolve).
+// `without(declaration)` leaves declarations out, for the red cases.
+function resolverFor(theme, { without = () => false, base = fixture.customProperties } = {}) {
+  const decls = [...base.filter((d) => !d.async), ...keepiaCustomProperties(), ...base.filter((d) => d.async)].filter((d) => !without(d));
+  const byName = new Map();
+  decls.forEach((d, order) => {
+    if (!byName.has(d.property)) byName.set(d.property, []);
+    byName.get(d.property).push({ ...d, order, scope: scopeOf(d, theme) });
+  });
+  const later = (a, b) => compareSpecificity(a.specificity, b.specificity) || (a.order - b.order);
+  const candidates = (name) => {
+    const ds = byName.get(name) ?? [];
+    const root = ds.filter((d) => d.scope === 'root').sort(later).at(-1);
+    return [...(root ? [root] : []), ...ds.filter((d) => d.scope === 'local' || (d.scope === 'conditional' && (!root || later(d, root) > 0)))].map((d) => d.value);
+  };
   const resolve = (value, seen = []) => {
-    const m = VAR.exec(value.trim());
-    if (!m) return value.trim().toLowerCase();
-    if (seen.includes(m[1])) return null;
-    const next = ours.get(m[1]) ?? theirs[m[1]] ?? m[2];
-    return next === undefined ? null : resolve(next, [...seen, m[1]]);
+    const v = value.trim();
+    const parts = splitTopLevel(v, ',').flatMap((p) => splitTopLevel(p, ' '));
+    if (parts.length > 1) return [...new Set(parts.flatMap((p) => resolve(p, seen)))];
+    const m = VAR.exec(v);
+    if (!m) return [normColour(v)];
+    if (seen.includes(m[1])) return [null];
+    const values = candidates(m[1]);
+    if (!values.length) return m[2] === undefined ? [null] : resolve(m[2], seen);
+    return [...new Set(values.flatMap((x) => resolve(x, [...seen, m[1]])))];
   };
   return resolve;
 }
@@ -321,35 +429,54 @@ const within = (outer, inner) => (inner.type === null || inner.type === outer.ty
   && inner.ids.every((i) => outer.ids.includes(i))
   && inner.classes.every((c) => outer.classes.includes(c))
   && inner.attrs.every((a) => outer.attrs.some((b) => b.name === a.name && b.op === a.op && b.value === a.value));
+const named = (c) => Boolean(c.type || c.ids.length || c.classes.length || c.attrs.length);
+const INHERITS = ['inherit', 'currentcolor', 'unset', 'revert'];
+const BG = ['background', 'background-color'];
 
-// rules: [{ file, selector, property, value, scoped }]. Returns one line per brand-1 text
-// rule that lands on a brand-soft ground: on the ground element itself or inside it (the
-// ground's subject is one of the text selector's compounds), or above it when the ground
-// rule sets no colour of its own (the text's subject is an ancestor compound of the
-// ground's selector). Scoped rules of two different components never meet.
+// rules: [{ file, selector, property, value, scoped }]; resolve: value → colours. Returns one
+// line per brand-1 text rule that lands on a brand-soft ground:
+//   - on it or inside it: the ground's subject is one of the text selector's compounds;
+//   - above it, when the ground sets no colour of its own (`inherit` and the like do not
+//     count): the text's subject is an ancestor compound of the ground's selector;
+//   - next to it: both selectors share a named ancestor compound (the text may sit inside the
+//     ground, as a <mark> in a selected hit's <a>).
+// Scoped rules of two different components never meet, and neither do the two search
+// providers: a site sets one `themeConfig.search.provider`, so VitePress renders either the
+// local search or Algolia's DocSearch.
+const PROVIDERS = [
+  (file) => file === 'components/VPLocalSearchBox.vue',
+  (file) => file === 'components/VPAlgoliaSearchBox.vue' || file === 'styles/docsearch.css' || file.startsWith('@docsearch/css/'),
+];
+const otherProviders = (a, b) => PROVIDERS.some((p, i) => p(a) && PROVIDERS.some((q, j) => j !== i && q(b)));
 function brandSoftFindings(rules, resolve, brand1, soft) {
-  const BG = ['background', 'background-color'];
-  const grounds = rules.filter((r) => BG.includes(r.property) && resolve(r.value) === soft);
-  const texts = rules.filter((r) => r.property === 'color' && resolve(r.value) === brand1);
+  const has = (r, colour) => resolve(r.value).includes(normColour(colour));
+  const grounds = rules.filter((r) => BG.includes(r.property) && has(r, soft));
+  const texts = rules.filter((r) => r.property === 'color' && has(r, brand1));
   const findings = [];
   for (const g of grounds) {
     const gCompounds = compoundsOf(g.selector);
     const gSubject = gCompounds.at(-1);
-    const ownColour = rules.some((r) => r.property === 'color' && r.file === g.file && r.selector === g.selector);
+    const gAncestors = gCompounds.slice(0, -1).filter(named);
+    const ownColour = rules.some((r) => r.property === 'color' && r.file === g.file && r.selector === g.selector && resolve(r.value).some((v) => !INHERITS.includes(v)));
     for (const t of texts) {
-      if (g.scoped && t.scoped && g.file !== t.file) continue;
+      if ((g.scoped && t.scoped && g.file !== t.file) || otherProviders(g.file, t.file)) continue;
       const tCompounds = compoundsOf(t.selector);
       const inside = tCompounds.some((c) => within(c, gSubject));
       const above = !ownColour && gCompounds.slice(0, -1).some((c) => within(c, tCompounds.at(-1)));
-      if (inside || above) findings.push(`${t.file} ${t.selector} { color: ${t.value} } on ${g.file} ${g.selector} { ${g.property}: ${g.value} }`);
+      const nextTo = gAncestors.some((gc) => tCompounds.slice(0, -1).filter(named).some((tc) => within(tc, gc) || within(gc, tc)));
+      if (inside || above || nextTo) findings.push(`${t.file} ${t.selector} { color: ${t.value} } on ${g.file} ${g.selector} { ${g.property}: ${g.value} }`);
     }
   }
   return findings;
 }
 
 const keepiaColourRules = () => parsed.rules.filter((r) => !r.decls.some(isCustom)).flatMap((r) => r.decls
-  .filter((d) => ['color', 'background', 'background-color'].includes(d.prop))
+  .filter((d) => COLOR_PROPERTIES.includes(d.prop))
   .flatMap((d) => splitTopLevel(r.selector, ',').map((selector) => ({ file: CSS_PATH, selector, property: d.prop, value: d.value, scoped: false }))));
+const guardRules = () => [...fixture.colorRules, ...keepiaColourRules()];
+
+// Colour values that do not resolve to anything, with the reason they may stay.
+const UNRESOLVED_OK = {};
 
 test('contrast: White brand-1 on brand-soft is 3.84:1, which is why no rule may render it', () => {
   const { light, dark } = blocks();
@@ -358,32 +485,123 @@ test('contrast: White brand-1 on brand-soft is 3.84:1, which is why no rule may 
   for (const p of PAIRS) assert.ok(!(p.fg === '--vp-c-brand-1' && p.on.includes('--vp-c-brand-soft')), 'the pair is guarded, not listed');
 });
 
-test('brand-soft guard: no VitePress or Keepia rule paints --vp-c-brand-1 text on --vp-c-brand-soft, in both themes', () => {
-  assert.deepEqual(fixture.colorProperties, ['color', 'background', 'background-color']);
-  assert.ok(fixture.colorRules.length >= 300, `only ${fixture.colorRules.length} colour rules in the fixture`);
-  const b = blocks();
-  const rules = [...fixture.colorRules, ...keepiaColourRules()];
-  let grounds = 0;
-  for (const theme of ['light', 'dark']) {
-    const resolve = resolverFor(theme, b[theme]);
-    const brand1 = b[theme].get('--vp-c-brand-1');
-    const soft = b[theme].get('--vp-c-brand-soft');
-    // The guard must see the rules it is about: VitePress paints brand-1 text (links, the
-    // menu link) and some background through a mapped variable.
-    assert.ok(rules.some((r) => r.property === 'color' && resolve(r.value) === brand1), `${theme}: no brand-1 text rule resolved`);
-    grounds += rules.filter((r) => ['background', 'background-color'].includes(r.property) && resolve(r.value) === soft).length;
-    assert.deepEqual(brandSoftFindings(rules, resolve, brand1, soft), [], theme);
+test('the fixture holds the colour declarations and custom properties of VitePress and of @docsearch/css ' + DOCSEARCH_CSS_VERSION, () => {
+  assert.deepEqual(COLOR_PROPERTIES, ['color', 'background', 'background-color']);
+  assert.deepEqual(fixture.colorProperties, COLOR_PROPERTIES, 'the fixture was captured with the capture script\'s colour properties');
+  assert.deepEqual(fixture.docsearch, { version: DOCSEARCH_CSS_VERSION, files: ['@docsearch/css/dist/style.css', '@docsearch/css/dist/sidepanel.css'] });
+  for (const file of ['styles/vars.css', 'styles/docsearch.css', ...fixture.docsearch.files]) {
+    assert.ok(fixture.customProperties.some((d) => d.file === file), `no custom property from ${file}`);
+    assert.ok(fixture.colorRules.some((r) => r.file === file) || file === 'styles/vars.css', `no colour rule from ${file}`);
   }
-  // The search match (highlight, the brand-soft token) is the one brand-soft ground today; its
-  // text is --vp-local-search-highlight-text (text-primary), not brand-1.
-  assert.ok(grounds >= 1, 'no brand-soft ground resolved: the guard checks nothing');
+  for (const p of COLOR_PROPERTIES) assert.ok(fixture.colorRules.some((r) => r.property === p), `no ${p} rule captured`);
+  // styles/docsearch.css (and so @docsearch/css) loads with the async VPAlgoliaSearchBox.
+  for (const d of fixture.customProperties.filter((x) => x.file === 'styles/docsearch.css' || x.file.startsWith('@docsearch/'))) assert.equal(d.async, true, `${d.file} ${d.selector}`);
+  assert.equal(fixture.customProperties.find((d) => d.file === 'styles/vars.css').async, false);
 });
 
-test('brand-soft guard: it finds brand-1 text on, inside and above a brand-soft ground', () => {
+test("brand-soft guard: the resolver follows the cascade, VitePress's vars.css included", () => {
+  const b = blocks();
+  for (const theme of ['light', 'dark']) {
+    const resolve = resolverFor(theme);
+    const brand1 = b[theme].get('--vp-c-brand-1');
+    // --vp-c-brand (deprecated) is not mapped: only vars.css's :root gives it, as var(--vp-c-brand-1).
+    assert.ok(!MAP['--vp-c-brand']);
+    assert.deepEqual(resolve('var(--vp-c-brand)'), [brand1], `${theme}: --vp-c-brand through vars.css`);
+    // --docsearch-primary-color: @docsearch/css's :root (0,1,0) loses to styles/docsearch.css's :root:root (0,2,0).
+    assert.deepEqual(resolve('var(--docsearch-primary-color)'), [brand1], `${theme}: DocSearch's primary colour`);
+    // A fallback, a cycle and a missing variable.
+    assert.deepEqual(resolve('var(--nope, #FFF)'), ['#ffffff']);
+    assert.deepEqual(resolve('var(--nope)'), [null]);
+  }
+  // vitepress.css's .dark block is off in light, VitePress's .dark values too.
+  assert.deepEqual(resolverFor('light')('var(--vp-c-bg)'), ['#ffffff']);
+  assert.deepEqual(resolverFor('dark')('var(--vp-c-bg)'), ['#161616']);
+  // Literals: hex, short hex, rgb(), rgba(), and the parts of a background shorthand.
+  const resolve = resolverFor('light');
+  assert.deepEqual(resolve('#9EF0F0'), ['#9ef0f0']);
+  assert.deepEqual(resolve('#9ef'), ['#99eeff']);
+  assert.deepEqual(resolve('rgb(158, 240, 240)'), ['#9ef0f0']);
+  assert.deepEqual(resolve('rgb(158 240 240 / 50%)'), ['rgba(158, 240, 240, 0.5)']);
+  assert.deepEqual(resolve('var(--vp-c-brand-soft) no-repeat'), ['#9ef0f0', 'no-repeat']);
+  assert.deepEqual(resolve('url(x.png), var(--vp-c-brand-soft)'), ['url(x.png)', '#9ef0f0']);
+});
+
+test('brand-soft guard: every colour value of the captured stylesheets and of vitepress.css resolves', () => {
+  const failing = [];
+  for (const theme of ['light', 'dark']) {
+    const resolve = resolverFor(theme);
+    for (const r of guardRules()) {
+      if (!resolve(r.value).includes(null)) continue;
+      const k = `${r.file} ${r.selector} { ${r.property}: ${r.value} }`;
+      if (!UNRESOLVED_OK[k]) failing.push(`${theme} ${k}`);
+    }
+  }
+  assert.deepEqual([...new Set(failing)], []);
+  for (const [k, reason] of Object.entries(UNRESOLVED_OK)) assert.ok(reason, k);
+});
+
+test('brand-soft guard: no captured or Keepia rule paints --vp-c-brand-1 text on --vp-c-brand-soft, in both themes', () => {
+  assert.ok(fixture.colorRules.length >= 500, `only ${fixture.colorRules.length} colour rules in the fixture`);
+  const b = blocks();
+  const rules = guardRules();
+  for (const theme of ['light', 'dark']) {
+    const resolve = resolverFor(theme);
+    const brand1 = b[theme].get('--vp-c-brand-1');
+    const soft = b[theme].get('--vp-c-brand-soft');
+    // The guard must see the rules it is about: brand-1 text (links, the menu link) and a
+    // brand-soft ground (the local search's match, whose text is text-primary).
+    assert.ok(rules.some((r) => r.property === 'color' && resolve(r.value).includes(brand1)), `${theme}: no brand-1 text rule resolved`);
+    assert.ok(rules.some((r) => BG.includes(r.property) && resolve(r.value).includes(soft)), `${theme}: no brand-soft ground resolved: the guard checks nothing`);
+    assert.deepEqual(brandSoftFindings(rules, resolve, brand1, soft), [], theme);
+  }
+});
+
+test("brand-soft guard: without vitepress.css's DocSearch blocks it finds the three DocSearch rules", () => {
+  const b = blocks();
+  const resolve = resolverFor('light', { without: (d) => d.file === CSS_PATH && Object.values(DOCSEARCH_SELECTORS).includes(d.selector) });
+  const found = brandSoftFindings(guardRules(), resolve, b.light.get('--vp-c-brand-1'), b.light.get('--vp-c-brand-soft'));
+  const want = [
+    'styles/docsearch.css .DocSearch-Sidepanel-Prompt--submit { color: var(--docsearch-primary-color) } on styles/docsearch.css .DocSearch-Sidepanel-Prompt--submit { background-color: var(--docsearch-soft-primary-color) }',
+    '@docsearch/css/dist/style.css .DocSearch-Hit[aria-selected=true] mark { color: var(--docsearch-highlight-color) } on @docsearch/css/dist/style.css .DocSearch-Hit[aria-selected=true] a { background-color: var(--docsearch-hit-highlight-color) }',
+    '@docsearch/css/dist/style.css .DocSearch-Action:hover { color: var(--docsearch-highlight-color) } on @docsearch/css/dist/style.css .DocSearch-Action:hover { background: var(--docsearch-soft-primary-color) }',
+  ];
+  for (const w of want) assert.ok(found.includes(w), `not found: ${w}`);
+});
+
+test('contrast: the DocSearch text pairs reach 4.5:1 in both themes, through every captured stylesheet', () => {
+  const failing = [];
+  for (const p of DOCSEARCH_PAIRS) {
+    for (const [file, selector] of p.rules) assert.ok(fixture.colorRules.some((r) => r.file === file && r.selector === selector), `${file} ${selector} is not a captured rule`);
+    for (const theme of ['light', 'dark']) {
+      const resolve = resolverFor(theme);
+      const fgs = resolve(`var(${p.fg})`);
+      const grounds = resolve(`var(${p.on})`);
+      for (const fg of fgs) for (const g of grounds) {
+        assert.match(`${fg}${g}`, /^#[0-9a-f]{6}#[0-9a-f]{6}$/, `${theme} ${p.where}: ${fg} on ${g} is not an opaque pair`);
+        const r = ratio(fg, g);
+        if (!(r >= 4.5)) failing.push(`${theme} ${p.fg} on ${p.on}: ${r.toFixed(2)} < 4.5 (${p.where})`);
+      }
+    }
+  }
+  assert.deepEqual(failing, []);
+  // The decided grounds, pinned: brand-1 on background and on layer-01.
+  const b = blocks();
+  const ds = docsearchBlocks();
+  assert.equal(ratio(b.light.get('--vp-c-brand-1'), ds.light.get('--docsearch-soft-primary-color')).toFixed(2), '4.99');
+  assert.equal(ratio(b.light.get('--vp-c-brand-1'), ds.light.get('--docsearch-hit-highlight-color')).toFixed(2), '4.54');
+});
+
+test('brand-soft guard: it finds brand-1 text on, inside, above and next to a brand-soft ground', () => {
   const vars = new Map([['--vp-c-brand-1', '#007d79'], ['--vp-c-brand-soft', '#9ef0f0'], ['--vp-c-default-soft', '#9ef0f0'], ['--vp-c-text-1', '#161616']]);
-  const resolve = (v) => { const m = VAR.exec(v); return m ? vars.get(m[1]) ?? null : v; };
+  const resolve = (v) => splitTopLevel(v, ' ').map((p) => { const m = VAR.exec(p); return m ? vars.get(m[1]) ?? null : normColour(p); });
   const r = (file, selector, property, value, scoped = true) => ({ file, selector, property, value, scoped });
   const find = (rules) => brandSoftFindings(rules, resolve, '#007d79', '#9ef0f0');
+  assert.equal(find([r('a.css', '.box', 'background', 'rgb(158, 240, 240)', false), r('a.css', '.box', 'color', 'rgb(0 125 121)', false)]).length, 1, 'rgb() literals');
+  assert.equal(find([r('a.css', '.box', 'background', 'var(--vp-c-brand-soft) no-repeat', false), r('a.css', '.box a', 'color', 'var(--vp-c-brand-1)', false)]).length, 1, 'a background shorthand');
+  assert.equal(find([r('a.css', '.box .tag', 'background', 'var(--vp-c-brand-soft)', false), r('a.css', '.box .tag', 'color', 'inherit', false), r('b.css', '.box', 'color', 'var(--vp-c-brand-1)', false)]).length, 1, 'own colour inherit');
+  assert.equal(find([r('a.css', '.hit a', 'background', 'var(--vp-c-brand-soft)', false), r('a.css', '.hit mark', 'color', 'var(--vp-c-brand-1)', false)]).length, 1, 'next to: a mark in the selected hit');
+  assert.equal(find([r('components/VPLocalSearchBox.vue', 'mark', 'background', 'var(--vp-c-brand-soft)'), r('@docsearch/css/dist/style.css', 'mark', 'color', 'var(--vp-c-brand-1)', false)]).length, 0, 'the two search providers');
+  assert.equal(find([r('components/VPLocalSearchBox.vue', 'mark', 'background', 'var(--vp-c-brand-soft)'), r('styles/base.css', 'mark', 'color', 'var(--vp-c-brand-1)', false)]).length, 1, 'a global rule reaches a scoped ground');
   // VPMenuLink's hover with brand-soft mapped into the menu-link ground (default-soft).
   const hover = [r('components/VPMenuLink.vue', '.link:hover', 'color', 'var(--vp-c-brand-1)'), r('components/VPMenuLink.vue', '.link:hover', 'background-color', 'var(--vp-c-default-soft)')];
   assert.equal(find(hover).length, 1, 'the same rule');
