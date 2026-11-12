@@ -1,0 +1,8 @@
+# want: 5:setup 5:setup
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test

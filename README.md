@@ -81,10 +81,10 @@ The logo arrives with keepia/mail#7, part 3. One rule follows from the theme alr
 | `scripts/contrast.mjs` | The contrast pairs and the WCAG 2.x ratio |
 | `scripts/build_all.mjs` | `npm run build:all`: the one entry point for all generation steps (see Building) |
 | `scripts/check-pack.mjs` | Fixes the package contents, file by file, and forbids lifecycle scripts |
-| `scripts/workflows.test.mjs` | The rules every workflow follows: pins, permissions, checkouts, the Node prelude, Dependabot |
+| `scripts/workflow-rules.mjs`, `scripts/workflows.test.mjs` | The rules every workflow follows (parsed YAML): pins, permissions, triggers, required jobs, `run` without `${{ }}`, npm, checkouts, the Node prelude, Dependabot |
 | `scripts/*.test.mjs` | The tests, run by `npm test` (no network) |
 | `scripts/theme.test.mjs`, `scripts/contrast.test.mjs` | The token mapping, the generated theme files and the contrast checks |
-| `scripts/fixtures/` | Captured data the tests read (an `npm pack` sample) |
+| `scripts/fixtures/` | Captured data the tests read (an `npm pack` sample) and the workflow fixtures (`workflows/`) |
 | `docs/development/index.md` | The checks on every pull request |
 
 ## Security

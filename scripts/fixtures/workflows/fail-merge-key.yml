@@ -1,0 +1,10 @@
+# want: 3:subset 4:pin 10:subset
+name: fixture
+x-step: &step
+  uses: actions/setup-go@v7
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - <<: *step

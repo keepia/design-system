@@ -1,0 +1,17 @@
+# want: none
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "echo uses: foo"
+      - run: 'echo uses: actions/setup-go@v7'
+      - run: |
+          echo "uses: actions/setup-go@v7"
+          printf '%s\n' 'a\b' | sed 's/#/x/'
+      - name: 'it''s fine # x'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "a # b"
+          cache-dependency-path: a#b

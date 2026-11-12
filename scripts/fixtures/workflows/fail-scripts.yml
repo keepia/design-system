@@ -1,0 +1,8 @@
+# want: 8:scripts
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node scripts/build.mjs

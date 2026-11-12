@@ -1,0 +1,10 @@
+# want: 8:flow-uses 9:flow-uses 10:flow-uses
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - {uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, name: 'pinned # v7.0.0'}
+      - {uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, with: {ref: "#v1.0.0"}}
+      - {uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e, name: "pinned # v7.0.0"}

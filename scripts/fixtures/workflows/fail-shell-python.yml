@@ -1,0 +1,9 @@
+# want: 9:shell
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: print(1)
+        shell: python

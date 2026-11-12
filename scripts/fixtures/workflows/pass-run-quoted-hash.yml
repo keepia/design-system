@@ -1,0 +1,11 @@
+# want: none
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "make test #x"
+      - run: make test#x
+      - run: |
+          make test # a shell comment
