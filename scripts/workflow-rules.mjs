@@ -30,19 +30,22 @@ const REQUIRED_ON = { push: { branches: ['main'] }, pull_request: null };
 const RELEASE_ON = {
   workflow_dispatch: {
     inputs: {
-      dry_run: { description: 'Build and pack, but attest nothing and create no tag or release', type: 'boolean', default: false },
+      // A dry run by default: one click on "Run workflow" releases nothing (Review B note 5 on
+      // keepia/design-system#8); the real release needs the box unticked.
+      dry_run: { description: 'Build and pack, but attest nothing and create no tag or release (untick for the real release)', type: 'boolean', default: true },
     },
   },
 };
 // The jobs of release.yml that hold write tokens (`releaseJob` in the policy) download the built
 // artifact, check its checksum, attest it and call gh, and nothing else: no checkout, no local
 // action, no repository or dependency code in a `run` (ported from pklnx/design-system's
-// releaseJobProblems), no `shell`, no job `env`, `defaults`, `container` or `services`, step env
-// only from RELEASE_JOB_ENV, and the dry-run condition exactly, so a dry run attests nothing and
-// creates no tag or release.
+// releaseJobProblems), no `shell`, no job `env`, `defaults`, `container`, `services` or
+// `continue-on-error`, no `continue-on-error` on a step, step env only from RELEASE_JOB_ENV, the
+// dry-run condition exactly, so a dry run attests nothing and creates no tag or release, and
+// `needs` exactly as the policy says, so a failed build or attestation stops the release.
 export const RELEASE_JOB_IF = '${{ !inputs.dry_run }}';
 const RELEASE_JOB_ENV = ['GH_TOKEN', 'TAG', 'TARBALL'];
-const RELEASE_JOB_DENIED_KEYS = ['env', 'defaults', 'container', 'services'];
+const RELEASE_JOB_DENIED_KEYS = ['env', 'defaults', 'container', 'services', 'continue-on-error'];
 // Commands that run repository or dependency code: runtimes and package managers, a path under
 // scripts/ or node_modules/, or a repository-relative executable (./x, ../x) as a command.
 const CODE_COMMAND = /(?<![\w./-])(?:node|nodejs|npm|npx|pnpm|yarn|corepack|python[\d.]*|pip[\d.]*|pipx|ruby|perl|deno|bun)(?![\w-])/;
@@ -84,8 +87,8 @@ export const POLICY = {
       scripts: [],
       jobs: {
         build: { permissions: { contents: 'read' }, scripts: ['check-pack.mjs', 'release-notes.mjs'] },
-        attest: { permissions: { 'id-token': 'write', attestations: 'write' }, releaseJob: true },
-        release: { permissions: { contents: 'write' }, releaseJob: true },
+        attest: { permissions: { 'id-token': 'write', attestations: 'write' }, releaseJob: true, needs: ['build'] },
+        release: { permissions: { contents: 'write' }, releaseJob: true, needs: ['build', 'attest'] },
       },
       buildEntry: { job: 'build', step: 'Generated files are committed', commands: ['npm run build:all'] },
     },
@@ -450,7 +453,7 @@ function checkWorkflow(root, policy, add) {
       }
     }
     const steps = stepsOf(job, add, `job ${id}`);
-    if (jobPolicy?.releaseJob) checkReleaseJob(id, jp, steps, add);
+    if (jobPolicy?.releaseJob) checkReleaseJob(id, jp, steps, add, jobPolicy);
     if (jobPolicy?.required) {
       checkStepKeys(steps, jobPolicy.stepEnv ?? {}, add, `job ${id}`);
       // A required job checks out the PR's own code: no ref, repository or path input.
@@ -495,11 +498,17 @@ function checkWorkflow(root, policy, add) {
 }
 
 // A job of release.yml that holds write tokens (see RELEASE_JOB_IF).
-function checkReleaseJob(id, jp, steps, add) {
+function checkReleaseJob(id, jp, steps, add, jobPolicy) {
   const job = jp.value;
   const where = `job ${id}`;
   const cond = pairOf(job, 'if');
   if (str(cond?.value) !== RELEASE_JOB_IF) add(cond?.key ?? jp.key, 'release-job', `${where}: if must be exactly ${RELEASE_JOB_IF}, so a dry run attests nothing and creates no tag or release`);
+  // `needs: build` and `needs: [build]` are the same to GitHub.
+  const needs = pairOf(job, 'needs');
+  const got = needs ? toJS(needs.value) : [];
+  if (!equal(typeof got === 'string' ? [got] : got, jobPolicy.needs ?? [])) {
+    add(needs?.key ?? jp.key, 'release-job', `${where}: needs must be exactly ${JSON.stringify(jobPolicy.needs ?? [])}, so a failed earlier job stops it`);
+  }
   for (const k of RELEASE_JOB_DENIED_KEYS) {
     const p = pairOf(job, k);
     if (p) add(p.key, 'release-job', `${where}: ${k} is not allowed in a job that holds write tokens`);
@@ -511,6 +520,8 @@ function checkReleaseJob(id, jp, steps, add) {
     if (u.startsWith('./') || u.startsWith('../')) add(uses.key, 'release-job', `${where}: uses the local action ${u}`);
     const shell = pairOf(step, 'shell');
     if (shell) add(shell.key, 'release-job', `${where}: sets a shell, so a run step could run another interpreter (only the workflow default bash)`);
+    const coe = pairOf(step, 'continue-on-error');
+    if (coe) add(coe.key, 'release-job', `${where}: continue-on-error on a step, so a failed check would not stop the job`);
     const env = pairOf(step, 'env');
     if (env && !isMap(env.value)) add(env.key, 'release-job', `${where}: step env is not a mapping`);
     for (const p of isMap(env?.value) ? env.value.items : []) {

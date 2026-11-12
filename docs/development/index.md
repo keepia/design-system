@@ -56,7 +56,7 @@ not `false`.
 - `ci.yml` and `secrets.yml` run on `push` to `main` and on every
   `pull_request`, with no filter and no other trigger; `release.yml` runs
   only on `workflow_dispatch`, with exactly the `dry_run` input (a boolean,
-  off by default) [`on`]. Their required
+  on by default, so a real release needs the box unticked) [`on`]. Their required
   jobs (`check`, `secret-scan`) are the only job in their file, are named
   after their id, have only `name`, `runs-on`, `timeout-minutes`, `env` (as
   in the policy) and `steps`, and their steps only `name`, `id`, `uses`,
@@ -98,10 +98,13 @@ not `false`.
   `node`, `npm`, `npx`, `pnpm`, `yarn`, `corepack`, Python, pip, Ruby, Perl,
   Deno or Bun, names a path under `scripts/` or `node_modules/`, or starts a
   repository-relative command (`./x`, `../x`); shell comment lines do not
-  count. They set no `shell`, no job `env`, `defaults`, `container` or
-  `services`, and a step's `env` only `GH_TOKEN`, `TAG` and `TARBALL`. Their
-  `if` is exactly `${{ !inputs.dry_run }}`, so a dry run attests nothing and
-  creates no tag or release [`release-job`].
+  count. They set no `shell`, no job `env`, `defaults`, `container`,
+  `services` or `continue-on-error`, no `continue-on-error` on a step, and a
+  step's `env` only `GH_TOKEN`, `TAG` and `TARBALL`. Their `if` is exactly
+  `${{ !inputs.dry_run }}`, so a dry run attests nothing and creates no tag
+  or release. Their `needs` are exactly `build` for `attest` and `build,
+  attest` for `release`, so a failed build or attestation stops the release
+  [`release-job`].
 - Dependabot covers npm, the workflows and the composite action, and
   `tools/gitleaks`, weekly with a 14-day cooldown, exactly as in the policy
   [`dependabot`].
@@ -144,9 +147,14 @@ the real files; every rule id has at least one red case there.
 - That a version comment matches its SHA: that needs the network, and
   Dependabot keeps both in step.
 - In the release jobs that hold write tokens: code run through a shell
-  variable or `bash`/`sh` on a file of the downloaded artifact (for example
-  `bash dist/x.sh`), and what an action's `with:` inputs make it do. Review
-  covers these; the release workflow is risk class (a).
+  variable; an interpreter or `source`/`.` given a path as its argument (for
+  example `bash dist/x.sh`, `sh -c "$(cat dist/notes.md)"`, `source ./x` or
+  `. ./x`), since only the command word is checked; writes to
+  `"$GITHUB_ENV"`; a repository cloned and built there (`git clone … &&
+  make`); and what an action's `with:` inputs make it do. Review covers
+  these; the release workflow is risk class (a). Checked as rules, not left
+  to review: `continue-on-error` on these jobs or their steps, and their
+  `needs`.
 
 **Known false positives (fail closed).**
 - Any key named `uses` is checked, also a step input or an env variable;

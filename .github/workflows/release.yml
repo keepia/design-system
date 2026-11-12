@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Build and pack, but attest nothing and create no tag or release
+        description: Build and pack, but attest nothing and create no tag or release (untick for the real release)
         type: boolean
-        default: false
+        default: true
 
 permissions: {}
 
@@ -43,6 +43,20 @@ jobs:
             echo "::error::release.yml runs only on main, not on '$GITHUB_REF'"
             exit 1
           fi
+
+      # Says in the log and the summary which kind of run this is. Anything but
+      # an unticked box counts as a dry run, as it does for attest and release.
+      - name: Mode
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "false" ]; then
+            msg="releasing: attest, tag and release follow when every check passes"
+          else
+            msg="dry run, nothing released: no attestation, no tag, no release"
+          fi
+          echo "::notice::$msg"
+          echo "**$msg**" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

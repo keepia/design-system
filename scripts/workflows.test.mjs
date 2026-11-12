@@ -153,7 +153,13 @@ test('ci and secrets grant only contents: read, at the top level, and no job ask
 test('release.yml: started by hand with a dry-run input, no permissions at the top level, each job exactly its own', () => {
   assertNone('permissions', 'on', 'release-job');
   const w = parsed(REL);
-  assert.deepEqual(w.on, { workflow_dispatch: { inputs: { dry_run: { description: 'Build and pack, but attest nothing and create no tag or release', type: 'boolean', default: false } } } });
+  assert.deepEqual(w.on, { workflow_dispatch: { inputs: { dry_run: { description: 'Build and pack, but attest nothing and create no tag or release (untick for the real release)', type: 'boolean', default: true } } } });
+  // The run says which kind it is, in the log and the summary, before anything else is built.
+  const mode = w.jobs.build.steps[1];
+  assert.equal(mode.name, 'Mode');
+  assert.deepEqual(mode.env, { DRY_RUN: '${{ inputs.dry_run }}' });
+  assert.match(mode.run, /^if \[ "\$DRY_RUN" = "false" \]; then\n\s*msg="releasing: [^"]+"\nelse\n\s*msg="dry run, nothing released: [^"]+"\nfi\n/);
+  assert.match(mode.run, /\necho "::notice::\$msg"\necho "\*\*\$msg\*\*" >> "\$GITHUB_STEP_SUMMARY"\n$/);
   assert.deepEqual(w.permissions, {});
   assert.deepEqual(Object.fromEntries(Object.entries(w.jobs).map(([id, j]) => [id, j.permissions])), {
     build: { contents: 'read' },
@@ -368,31 +374,37 @@ const MUTATIONS = [
   // release.yml (keepia/mail#7, part 5): the plan's counter-proof, then pklnx's releaseJobProblems
   // cases on the parsed steps, then the dry-run condition, the job env and the policy entry.
   ['plan 5.4', 'contents: write at the top level of release.yml', [[REL, 'permissions: {}\n', 'permissions:\n  contents: write\n']], [`${REL}:16:permissions`]],
-  ['pklnx', 'a checkout in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - uses: ${CO}\n        with:\n          persist-credentials: false\n      - uses: ${DL}\n`]], [`${REL}:150:release-job`]],
-  ['pklnx', 'Actions/Checkout in release', [[REL, '      - name: Create the tag\n', `      - uses: ${CO.replace('actions/checkout', 'Actions/Checkout')}\n        with:\n          persist-credentials: false\n      - name: Create the tag\n`]], [`${REL}:184:release-job`]],
-  ['pklnx', 'a local action in release', [[REL, '      - name: Create the tag\n', '      - uses: ./.github/actions/setup\n      - name: Create the tag\n']], [`${REL}:184:release-job`]],
-  ['pklnx', 'node scripts/ in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - run: node scripts/release-notes.mjs\n      - uses: ${DL}\n`]], [`${REL}:150:release-job`, `${REL}:150:scripts`]],
-  ['pklnx', 'a scripts/ path in release', [[REL, '      - name: Create the tag\n', '      - run: bash scripts/x.sh\n      - name: Create the tag\n']], [`${REL}:184:release-job`]],
+  ['pklnx', 'a checkout in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - uses: ${CO}\n        with:\n          persist-credentials: false\n      - uses: ${DL}\n`]], [`${REL}:164:release-job`]],
+  ['pklnx', 'Actions/Checkout in release', [[REL, '      - name: Create the tag\n', `      - uses: ${CO.replace('actions/checkout', 'Actions/Checkout')}\n        with:\n          persist-credentials: false\n      - name: Create the tag\n`]], [`${REL}:198:release-job`]],
+  ['pklnx', 'a local action in release', [[REL, '      - name: Create the tag\n', '      - uses: ./.github/actions/setup\n      - name: Create the tag\n']], [`${REL}:198:release-job`]],
+  ['pklnx', 'node scripts/ in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - run: node scripts/release-notes.mjs\n      - uses: ${DL}\n`]], [`${REL}:164:release-job`, `${REL}:164:scripts`]],
+  ['pklnx', 'a scripts/ path in release', [[REL, '      - name: Create the tag\n', '      - run: bash scripts/x.sh\n      - name: Create the tag\n']], [`${REL}:198:release-job`]],
   ['pklnx', 'npm ci in a multi-line block in release', [[REL, '      - name: Create the tag\n', '      - name: Install\n        run: |\n          echo start\n          npm ci\n      - name: Create the tag\n']],
-    [`${REL}:185:release-job`, `${REL}:185:npm`, `${REL}:164:setup`, `${REL}:164:setup`, `${SETUP_ACTION}:1:npm`]],
-  ['pklnx', 'python3 in a multi-line block in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - name: Py\n        run: |\n          echo start\n          python3 -c "print(1)"\n      - uses: ${DL}\n`]], [`${REL}:151:release-job`]],
-  ['pklnx', 'a repository-relative command in release', [[REL, '      - name: Create the tag\n', '      - run: ./tools/x\n      - name: Create the tag\n']], [`${REL}:184:release-job`]],
-  ['pklnx', 'another shell in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - shell: python {0}\n        run: print(1)\n      - uses: ${DL}\n`]], [`${REL}:150:release-job`, `${REL}:150:shell`]],
-  ['pklnx', 'contents: write added to attest', [[REL, '      id-token: write\n      attestations: write\n', '      id-token: write\n      attestations: write\n      contents: write\n']], [`${REL}:146:permissions`]],
-  ['pklnx', 'a permission dropped from attest', [[REL, '      attestations: write\n    steps:', '    steps:']], [`${REL}:146:permissions`]],
-  ['pklnx', 'id-token added to release', [[REL, '    permissions:\n      contents: write\n', '    permissions:\n      contents: write\n      id-token: write\n']], [`${REL}:169:permissions`]],
-  ['pklnx', 'write-all in release', [[REL, '    permissions:\n      contents: write\n', '    permissions: write-all\n']], [`${REL}:169:permissions`]],
-  ['pklnx', 'attest renamed', [[REL, '  attest:\n', '  sign:\n']], [`${REL}:141:permissions`, `${REL}:26:release-job`]],
+    [`${REL}:199:release-job`, `${REL}:199:npm`, `${REL}:178:setup`, `${REL}:178:setup`, `${SETUP_ACTION}:1:npm`]],
+  ['pklnx', 'python3 in a multi-line block in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - name: Py\n        run: |\n          echo start\n          python3 -c "print(1)"\n      - uses: ${DL}\n`]], [`${REL}:165:release-job`]],
+  ['pklnx', 'a repository-relative command in release', [[REL, '      - name: Create the tag\n', '      - run: ./tools/x\n      - name: Create the tag\n']], [`${REL}:198:release-job`]],
+  ['pklnx', 'another shell in attest', [[REL, `    steps:\n      - uses: ${DL}\n`, `    steps:\n      - shell: python {0}\n        run: print(1)\n      - uses: ${DL}\n`]], [`${REL}:164:release-job`, `${REL}:164:shell`]],
+  ['pklnx', 'contents: write added to attest', [[REL, '      id-token: write\n      attestations: write\n', '      id-token: write\n      attestations: write\n      contents: write\n']], [`${REL}:160:permissions`]],
+  ['pklnx', 'a permission dropped from attest', [[REL, '      attestations: write\n    steps:', '    steps:']], [`${REL}:160:permissions`]],
+  ['pklnx', 'id-token added to release', [[REL, '    permissions:\n      contents: write\n', '    permissions:\n      contents: write\n      id-token: write\n']], [`${REL}:183:permissions`]],
+  ['pklnx', 'write-all in release', [[REL, '    permissions:\n      contents: write\n', '    permissions: write-all\n']], [`${REL}:183:permissions`]],
+  ['pklnx', 'attest renamed', [[REL, '  attest:\n', '  sign:\n']], [`${REL}:155:permissions`, `${REL}:26:release-job`]],
   ['pklnx', 'release removed', [[REL, /\n {2}# Creates the tag and the release\.[\s\S]*$/, '\n']], [`${REL}:26:release-job`]],
-  ['new', 'attest without the dry-run condition', [[REL, '    if: ${{ !inputs.dry_run }}\n', '']], [`${REL}:141:release-job`]],
-  ['new', 'if: always() on attest', [[REL, '    needs: build\n    if: ${{ !inputs.dry_run }}\n', '    needs: build\n    if: always()\n']], [`${REL}:143:release-job`]],
-  ['new', 'BASH_ENV on the step that creates the tag', [[REL, '          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ needs.build.outputs.tag }}\n', '          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ needs.build.outputs.tag }}\n          BASH_ENV: ./x\n']], [`${REL}:189:release-job`]],
-  ['new', 'a job env on attest', [[REL, '    timeout-minutes: 10\n    permissions:\n      id-token', '    timeout-minutes: 10\n    env:\n      NODE_OPTIONS: --require ./x.js\n    permissions:\n      id-token']], [`${REL}:146:release-job`]],
-  ['new', 'the dry run on by default', [[REL, '        default: false\n', '        default: true\n']], [`${REL}:8:on`]],
+  ['new', 'attest without the dry-run condition', [[REL, '    if: ${{ !inputs.dry_run }}\n', '']], [`${REL}:155:release-job`]],
+  ['new', 'if: always() on attest', [[REL, '    needs: build\n    if: ${{ !inputs.dry_run }}\n', '    needs: build\n    if: always()\n']], [`${REL}:157:release-job`]],
+  ['new', 'BASH_ENV on the step that creates the tag', [[REL, '          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ needs.build.outputs.tag }}\n', '          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ needs.build.outputs.tag }}\n          BASH_ENV: ./x\n']], [`${REL}:203:release-job`]],
+  ['new', 'a job env on attest', [[REL, '    timeout-minutes: 10\n    permissions:\n      id-token', '    timeout-minutes: 10\n    env:\n      NODE_OPTIONS: --require ./x.js\n    permissions:\n      id-token']], [`${REL}:160:release-job`]],
+  // Round 2 on keepia/design-system#8: a dry run by default (Review B note 5), and the
+  // attest-before-release order pinned as a rule (Review B finding 4).
+  ['round 2', 'the dry run off by default', [[REL, '        default: true\n', '        default: false\n']], [`${REL}:8:on`]],
+  ['round 2', 'continue-on-error on the attest job', [[REL, '    needs: build\n', '    needs: build\n    continue-on-error: true\n']], [`${REL}:157:release-job`]],
+  ['round 2', 'continue-on-error on a step of release', [[REL, '      - name: Create the tag\n', '      - name: Create the tag\n        continue-on-error: true\n']], [`${REL}:199:release-job`]],
+  ['round 2', 'release needs only build', [[REL, '    needs: [build, attest]\n', '    needs: [build]\n']], [`${REL}:179:release-job`]],
+  ['round 2', 'attest needs nothing', [[REL, '    needs: build\n', '']], [`${REL}:155:release-job`]],
   ['new', 'a push trigger on release.yml', [[REL, 'on:\n', 'on:\n  push:\n    tags: [v*]\n']], [`${REL}:8:on`]],
-  ['new', 'npm pack without --ignore-scripts in Pack', [[REL, 'npm pack --ignore-scripts --pack-destination "$dist"', 'npm pack --pack-destination "$dist"']], [`${REL}:107:npm`]],
-  ['new', 'the release builds with npm run build', [[REL, '          npm run build:all\n          if', '          npm run build\n          if']], [`${REL}:89:build-entry`, `${REL}:89:npm`]],
-  ['new', 'the release drops its drift check', [[REL, '            echo "::error::npm run build:all changed the tree"\n', '']], [`${REL}:89:build-entry`]],
+  ['new', 'npm pack without --ignore-scripts in Pack', [[REL, 'npm pack --ignore-scripts --pack-destination "$dist"', 'npm pack --pack-destination "$dist"']], [`${REL}:121:npm`]],
+  ['new', 'the release builds with npm run build', [[REL, '          npm run build:all\n          if', '          npm run build\n          if']], [`${REL}:103:build-entry`, `${REL}:103:npm`]],
+  ['new', 'the release drops its drift check', [[REL, '            echo "::error::npm run build:all changed the tree"\n', '']], [`${REL}:103:build-entry`]],
 ];
 
 const mutate = (edits) => {
