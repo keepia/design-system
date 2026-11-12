@@ -1,0 +1,18 @@
+# want: none
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    env:
+      IBM_TELEMETRY_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm test
+      - run: npm run build:all
+      - run: npm pack --dry-run --json --ignore-scripts | node scripts/check-pack.mjs
+      - run: |
+          echo "::error::npm run build:all changed the tree; run it"

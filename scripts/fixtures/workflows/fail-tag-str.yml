@@ -1,0 +1,9 @@
+# want: 8:subset 8:pin 9:subset
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: !!str actions/setup-go@v7
+      - uses: !!str actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

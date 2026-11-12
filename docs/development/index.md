@@ -17,27 +17,122 @@ make secrets-test secrets             # secret scan: self-test, then the full hi
 ### Workflows and action pinning
 
 `scripts/workflows.test.mjs` (part of `npm test`, so of the `check` job)
-reads every workflow and the composite action `.github/actions/setup` and
-checks:
+parses every workflow, the composite action `.github/actions/setup` and
+`.github/dependabot.yml` with the [`yaml`](https://www.npmjs.com/package/yaml)
+package and checks the parsed structure, not the text. The rules and the
+policy table are in `scripts/workflow-rules.mjs`; every finding names
+`file:line` and a rule id. Every other YAML file under `.github` (the
+extension in any case) and every other file in `.github/workflows` fails the
+test unless it is listed there (`.github/ISSUE_TEMPLATE/config.yml` is
+checked for the YAML subset only). A new workflow needs a policy entry. A new
+action is a new external service and needs the maintainer's OK.
 
-- every `uses:` is pinned to a full 40-character commit SHA with a
-  `# vX.Y.Z` comment (`owner/repo@<sha> # v1.2.3`); local actions (`./…`)
-  must exist; every occurrence of an action pins the same SHA and comment;
-- `actions/setup-node` is pinned only in the setup action, which reads
-  `.node-version`; nothing else names a Node version; `npm ci
-  --ignore-scripts` runs once, there, with IBM's telemetry off;
-- every checkout has `persist-credentials: false`; every workflow grants
-  only `contents: read`, at the top level;
-- the required checks run on every pull request and push to `main`;
-- CI and the README call the same build entry point (`npm run build:all`);
-- a single-line `run:` value is valid as a plain YAML scalar;
+**YAML these files may use.** One document; no `%YAML` or `%TAG`
+directive; no anchors, aliases or merge keys; no tags (`!!str` included); no
+explicit `?` keys; no duplicate keys; only string keys. Quoted and escaped
+keys count under their decoded name (`"u\x73es"` is `uses`), and comments
+count for nothing. Action inputs (`with:`) are compared case-insensitively,
+as GitHub does, and two inputs that differ only in case fail. A file outside
+this subset fails; it is not interpreted.
+Values are compared exactly, so `persist-credentials: no` is the string `no`,
+not `false`.
+
+**Rules** (rule ids in brackets).
+- Every `uses` is written in block style [`flow-uses`]. It names a scanned
+  local action (`./…`) [`local-action`] or `owner/repo@<40-hex SHA>` with a
+  `# vX.Y.Z` comment on the same value [`pin`]. Every occurrence of an
+  action (compared case-insensitively) pins the same SHA and comment. Docker
+  actions and reusable workflows are not used.
+- Each workflow's top-level keys are `name`, `on`, `permissions`,
+  `concurrency`, `defaults` and `jobs` at most [`top-keys`]. Its top-level
+  and job-level `permissions` equal the policy table (today `contents: read`
+  at the top level, none per job) [`permissions`].
+- Every `actions/checkout` sets `persist-credentials: false`
+  [`persist-credentials`].
+- `ci.yml` and `secrets.yml` run on `push` to `main` and on every
+  `pull_request`, with no filter and no other trigger [`on`]. Their required
+  jobs (`check`, `secret-scan`) are the only job in their file, are named
+  after their id, have only `name`, `runs-on`, `timeout-minutes`, `env` (as
+  in the policy) and `steps`, and their steps only `name`, `id`, `uses`,
+  `with`, `run`, `env` and `shell`; the same holds for the steps of the
+  composite action. So there is no `if`, `continue-on-error`, `needs`,
+  `strategy` or `defaults` on them. A step's `env` sets only the names the
+  policy lists for that step name (today only `secret-scan`'s "Scan the new
+  commits" and the setup action's install step), so `BASH_ENV`,
+  `npm_config_*` or `MAKEFLAGS` cannot turn a required check green without
+  running it. An `actions/checkout` in a required job sets only
+  `persist-credentials` and `fetch-depth`, so it checks out the pull
+  request's own code (no `ref`, `repository` or `path`) [`required`].
+- No `run` value contains `${{` [`run-expression`]. Pass values through
+  `env:` and use `"$VAR"`. A `run` value is a string, and a plain one has no
+  trailing comment [`run`]. `shell` is `bash`, and `defaults` sets only
+  `run.shell` [`shell`].
+- npm runs only in exact forms, with no further option: `npm test`, `npm run
+  <name>` for a name the policy lists (today `build:all`), the `npm pack`
+  commands the policy lists (today `npm pack --dry-run --json
+  --ignore-scripts`), and `npm ci --ignore-scripts` once, in the setup
+  action. So `--script-shell=…`, `--prefix=…` or `--ignore-scripts=false`
+  cannot be added. `npx`, `pnpm`, `yarn` and `corepack` are not used [`npm`].
+- `actions/setup-node` appears only in the setup action, with
+  `package-manager-cache: false`; a job that runs npm checks out first, then
+  uses the setup action, and IBM's telemetry is off wherever npm runs
+  [`setup`]. The setup action reads `.node-version`, and no key
+  `node-version` exists [`node-version`].
+- CI's step "Generated files are committed" runs exactly `npm run build:all`
+  and keeps its drift check, and the README calls the same entry point
+  [`build-entry`]. `run` calls only the scripts the policy lists with `node
+  scripts/…`, also after node options or in quotes (today `check-pack.mjs`
+  in `ci.yml`) [`scripts`].
 - Dependabot covers npm, the workflows and the composite action, and
-  `tools/gitleaks`.
+  `tools/gitleaks`, weekly with a 14-day cooldown, exactly as in the policy
+  [`dependabot`].
 
-It reads the files as text, not with a YAML parser, as pklnx/design-system
-does (keepia/mail#7, decision T4): it checks the layout these files use and
-fails when a file departs from it. A new action is a new external service and
-needs the maintainer's OK.
+The test also runs the fixtures in `scripts/fixtures/workflows` (each starts
+with `# want: <line>:<rule> …` or `# want: none`) and a table of mutations of
+the real files; every rule id has at least one red case there.
+
+**What it does not check.**
+- Shell semantics. It reads command words, so `npm` behind a variable, an
+  alias, `eval` or shell quoting inside the word (`n""pm`) is not seen; a
+  command word ends at the first character that is not part of a name, so
+  `npm>x`, `npm<x` and `npm\` at the end of a line are seen.
+- What a step does beyond its structure, and files outside `.github`. These
+  can also make a required check green without running it, and the test
+  does not see them:
+  - in a `run`: writes to `"$GITHUB_ENV"` or `"$GITHUB_PATH"` (for example
+    `BASH_ENV=…`), `exit 0` before the command, or a drift check that keeps
+    the words `git status --porcelain` and `::error::` but no longer fails;
+  - removing a step, such as `Tests` or `Package contents`;
+  - an `.npmrc` (for example `script-shell=/bin/true`), the `scripts` in
+    `package.json` (`"test": "true"`, a `pretest`), or a `bin` shim of a
+    dependency;
+  - in `secrets.yml`: the values of its `env` (for example `BASE_SHA` set to
+    the head, which empties the scan range) and its `concurrency` group (a
+    constant group with `cancel-in-progress: true` lets pushes to `main`
+    cancel each other);
+  - `runs-on` (for example `self-hosted`), and a job named `check` in a
+    workflow that is not one of the two required-check workflows.
+
+  Review covers these. Under `CLAUDE.md` (Ticket flow, step 6), changes to
+  workflow permissions, the setup action, `secrets.yml` and the other
+  secret-scan files, the release workflow and any new action are risk class
+  (a) and get two independent reviews; `secrets.yml` also needs the
+  maintainer's OK. Other changes to `ci.yml`, to `package.json` scripts or to
+  an `.npmrc` get one session review and the green required checks.
+- Expressions in `with:` inputs of an action (for example a script input),
+  and in `env:` values (that is the allowed way). A new action needs the
+  maintainer's OK anyway.
+- That a version comment matches its SHA: that needs the network, and
+  Dependabot keeps both in step.
+
+**Known false positives (fail closed).**
+- Any key named `uses` is checked, also a step input or an env variable;
+  the same for `run`, `shell` and `node-version`. Rename it.
+- `npm` with a denied subcommand inside an `echo` text is reported when it
+  follows a space or a quote (`echo "then npm ci"`).
+- `${{` inside a `run` is reported also where it would be harmless.
+- `npm run-script <name>`, and `npm run` for a script the policy does not
+  list, are reported.
 
 ### Dependencies
 

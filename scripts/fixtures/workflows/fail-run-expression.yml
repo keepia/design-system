@@ -1,0 +1,14 @@
+# want: 8:run-expression 9:run-expression 10:run-expression 11:run-expression 12:run-expression 13:run-expression 14:run-expression
+name: fixture
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.pull_request.title }}"
+      - run: echo "${{ github.head_ref }}"
+      - run: echo "${{ inputs.x }}"
+      - run: echo "${{ steps.a.outputs.b }}"
+      - run: echo "${{ needs.j.outputs.o }}"
+      - run: echo "${{ env.X }}"
+      - run: echo "${{github.head_ref}}"
