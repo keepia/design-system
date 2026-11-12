@@ -1,4 +1,4 @@
-# want: 9:shell
+# want: 9:shell 11:shell
 name: fixture
 on: push
 jobs:
@@ -7,3 +7,5 @@ jobs:
     steps:
       - run: print(1)
         shell: python
+      - run: make test
+        shell: bash -c "true" {0}

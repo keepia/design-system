@@ -57,6 +57,12 @@ export const POLICY = {
     },
   },
   actionKeys: ['name', 'description', 'runs'],
+  // The scripts `npm run <name>` may run, with no further argument.
+  npmRun: ['build:all'],
+  // The exact `npm pack` commands (the words after `npm`).
+  npmPack: ['pack --dry-run --json --ignore-scripts'],
+  // The inputs an actions/checkout in a required job may set, so it checks out the PR's code.
+  requiredCheckoutInputs: ['persist-credentials', 'fetch-depth'],
   // The env names, per step name, a step of a composite action may set.
   actionStepEnv: { 'Install dependencies without install scripts': Object.keys(TELEMETRY) },
   dependabot: {
@@ -196,9 +202,11 @@ function npmProblem(word, rest, file) {
   if (word !== 'npm') return `${word} is not used here`;
   const cmd = rest.replace(/^["'`]/, '').replace(/^[ \t]+/, '');
   const segment = cmd.split(/[;&|)`\n]/)[0].trim();
-  if (/^run(?:\s|$)/.test(segment)) return null;
-  if (/^test(?:\s|$)/.test(segment)) return null;
-  if (/^pack(?:\s|$)/.test(segment) && /(?:^|\s)--ignore-scripts(?:\s|$)/.test(segment)) return null;
+  // Exact forms only: any further option (`--script-shell=…`, `--prefix=…`,
+  // `--ignore-scripts=false`) could turn the step green without running it.
+  if (segment === 'test') return null;
+  if (POLICY.npmRun.some((name) => segment === `run ${name}`)) return null;
+  if (POLICY.npmPack.includes(segment)) return null;
   if (segment === 'ci --ignore-scripts' && file === SETUP_ACTION) return null;
   return `npm ${segment || '(nothing)'} is not an allowed npm command`;
 }
@@ -406,7 +414,17 @@ function checkWorkflow(root, policy, add) {
       }
     }
     const steps = stepsOf(job, add, `job ${id}`);
-    if (jobPolicy?.required) checkStepKeys(steps, jobPolicy.stepEnv ?? {}, add, `job ${id}`);
+    if (jobPolicy?.required) {
+      checkStepKeys(steps, jobPolicy.stepEnv ?? {}, add, `job ${id}`);
+      // A required job checks out the PR's own code: no ref, repository or path input.
+      for (const step of steps) {
+        if (!/^actions\/checkout@/i.test(usesOf(step))) continue;
+        const w = valueOf(step, 'with');
+        for (const p of isMap(w) ? w.items : []) {
+          if (!POLICY.requiredCheckoutInputs.includes(keyOf(p)?.toLowerCase())) add(p.key, 'required', `job ${id}: checkout input ${keyOf(p)} is not allowed`);
+        }
+      }
+    }
     const allowed = jobPolicy?.scripts ?? policy.scripts;
     for (const step of steps) {
       const run = pairOf(step, 'run');

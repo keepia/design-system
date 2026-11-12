@@ -178,7 +178,7 @@ test('a run value is a string without ${{ }}, a plain one without a trailing com
 // ---- fixtures
 
 const fixtureNames = readdirSync(FIXTURES).filter((n) => n.endsWith('.yml')).sort();
-const FIXTURE_COUNT = 78;
+const FIXTURE_COUNT = 79;
 const wantOf = (src, name) => {
   const m = /^# want: (.*?)\r?$/m.exec(src);
   assert.ok(m, `${name}: a "# want:" line`);
@@ -255,7 +255,7 @@ const MUTATIONS = [
   ['N3', '%YAML 1.1 directive with persist-credentials: no', [[SECRETS, 'name: Secrets\n', '%YAML 1.1\n---\nname: Secrets\n'], [SECRETS, '          persist-credentials: false\n', '          persist-credentials: no\n']], [`${SECRETS}:1:subset`, `${SECRETS}:9:subset`, `${SECRETS}:9:top-keys`, `${SECRETS}:3:on`]],
   ['new', 'a second job next to check', [[CI, '        run: npm pack --dry-run --json --ignore-scripts | node scripts/check-pack.mjs\n', '        run: npm pack --dry-run --json --ignore-scripts | node scripts/check-pack.mjs\n\n  other:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n']], [`${CI}:28:required`, `${CI}:57:permissions`]],
   ['new', 'check renamed', [[CI, '    name: check\n', '    name: Check\n']], [`${CI}:29:required`]],
-  ['new', 'build entry changed', [[CI, '          npm run build:all\n', '          npm run build\n']], [`${CI}:42:build-entry`]],
+  ['new', 'build entry changed', [[CI, '          npm run build:all\n', '          npm run build\n']], [`${CI}:42:build-entry`, `${CI}:42:npm`]],
   ['new', 'drift check removed', [[CI, '            echo "::error::npm run build:all changed the tree; run it (README, Building) and commit the result"\n', '']], [`${CI}:42:build-entry`]],
   ['new', 'a script called directly', [[CI, '        run: npm test\n', '        run: node scripts/build.mjs && npm test\n']], [`${CI}:52:scripts`]],
   ['new', 'a different checkout SHA in one file', [[SECRETS, CO, CO.replace('3d3c42e5', '0000000a')]], [`${SECRETS}:29:pin`]],
@@ -290,6 +290,20 @@ const MUTATIONS = [
   ['A N4', 'a workflow named evil.YML', [['.github/workflows/evil.YML', null, 'name: evil\non: push\njobs: {}\n']], ['.github/workflows/evil.YML:1:scope']],
   ['A N4', 'a file in .github/workflows without a YAML extension', [['.github/workflows/evil.txt', null, 'name: evil\n']], ['.github/workflows/evil.txt:1:scope']],
   ['A N4', 'action.YML', [['.github/actions/setup/action.YML', null, 'name: x\n']], ['.github/actions/setup/action.YML:1:scope']],
+  // Review B on #4, F1: npm only in its exact forms.
+  ['B F1', 'npm test --script-shell=/bin/true', [[CI, '        run: npm test\n', '        run: npm test --script-shell=/bin/true\n']], [`${CI}:52:npm`]],
+  ['B F1', 'npm run test --script-shell=true', [[CI, '        run: npm test\n', '        run: npm run test --script-shell=true\n']], [`${CI}:52:npm`]],
+  ['B F1', 'npm test --prefix=/tmp/x', [[CI, '        run: npm test\n', '        run: npm test --prefix=/tmp/x\n']], [`${CI}:52:npm`]],
+  ['B F1', 'npm pack --ignore-scripts=false after --ignore-scripts', [[CI, 'npm pack --dry-run --json --ignore-scripts |', 'npm pack --dry-run --json --ignore-scripts --ignore-scripts=false |']], [`${CI}:55:npm`]],
+  ['B F1', 'npm run build:all with an option', [[CI, '          npm run build:all\n', '          npm run build:all --script-shell=true\n']], [`${CI}:42:npm`, `${CI}:42:build-entry`]],
+  // Review B on #4, F2: a required job checks out the PR's own code.
+  ['B F2', 'ref: main on the checkout of check', [[CI, '          persist-credentials: false\n', '          persist-credentials: false\n          ref: main\n']], [`${CI}:38:required`]],
+  ['B F2', 'repository: someone/fork on the checkout of secret-scan', [[SECRETS, '          fetch-depth: 0\n', '          fetch-depth: 0\n          repository: someone/fork\n']], [`${SECRETS}:33:required`]],
+  // Review B on #4: one red case per surviving mutation.
+  ['B M11', "telemetry 'false' on the setup action's npm step", [[SETUP_ACTION, "        IBM_TELEMETRY_DISABLED: 'true'\n", "        IBM_TELEMETRY_DISABLED: 'false'\n"]], [`${SETUP_ACTION}:19:setup`]],
+  ['B M14', 'an extra npm run line in the build entry step', [[CI, '          npm run build:all\n', '          npm run build:all\n          npm run build:all\n']], [`${CI}:42:build-entry`]],
+  ['B M15', 'Dependabot version 3', [[DEPENDABOT, 'version: 2\n', 'version: 3\n']], [`${DEPENDABOT}:13:dependabot`]],
+  ['B M17', 'the setup action using node24', [[SETUP_ACTION, '  using: composite\n', '  using: node24\n']], [`${SETUP_ACTION}:8:setup`]],
 ];
 
 const mutate = (edits) => {

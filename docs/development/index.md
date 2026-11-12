@@ -60,14 +60,19 @@ not `false`.
   policy lists for that step name (today only `secret-scan`'s "Scan the new
   commits" and the setup action's install step), so `BASH_ENV`,
   `npm_config_*` or `MAKEFLAGS` cannot turn a required check green without
-  running it [`required`].
+  running it. An `actions/checkout` in a required job sets only
+  `persist-credentials` and `fetch-depth`, so it checks out the pull
+  request's own code (no `ref`, `repository` or `path`) [`required`].
 - No `run` value contains `${{` [`run-expression`]. Pass values through
   `env:` and use `"$VAR"`. A `run` value is a string, and a plain one has no
   trailing comment [`run`]. `shell` is `bash`, and `defaults` sets only
   `run.shell` [`shell`].
-- npm runs only as `npm run`, `npm test`, `npm pack … --ignore-scripts`, and
-  `npm ci --ignore-scripts` once, in the setup action. `npx`, `pnpm`, `yarn`
-  and `corepack` are not used [`npm`].
+- npm runs only in exact forms, with no further option: `npm test`, `npm run
+  <name>` for a name the policy lists (today `build:all`), the `npm pack`
+  commands the policy lists (today `npm pack --dry-run --json
+  --ignore-scripts`), and `npm ci --ignore-scripts` once, in the setup
+  action. So `--script-shell=…`, `--prefix=…` or `--ignore-scripts=false`
+  cannot be added. `npx`, `pnpm`, `yarn` and `corepack` are not used [`npm`].
 - `actions/setup-node` appears only in the setup action, with
   `package-manager-cache: false`; a job that runs npm checks out first, then
   uses the setup action, and IBM's telemetry is off wherever npm runs
@@ -90,8 +95,30 @@ the real files; every rule id has at least one red case there.
 - Shell semantics. It reads command words, so `npm` behind a variable, an
   alias, `eval` or shell quoting inside the word (`n""pm`) is not seen; a
   command word ends at the first character that is not part of a name, so
-  `npm>x`, `npm<x` and `npm\` at the end of a line are seen. The
-  review covers that, as for any workflow change (risk class (a)).
+  `npm>x`, `npm<x` and `npm\` at the end of a line are seen.
+- What a step does beyond its structure, and files outside `.github`. These
+  can also make a required check green without running it, and the test
+  does not see them:
+  - in a `run`: writes to `"$GITHUB_ENV"` or `"$GITHUB_PATH"` (for example
+    `BASH_ENV=…`), `exit 0` before the command, or a drift check that keeps
+    the words `git status --porcelain` and `::error::` but no longer fails;
+  - removing a step, such as `Tests` or `Package contents`;
+  - an `.npmrc` (for example `script-shell=/bin/true`), the `scripts` in
+    `package.json` (`"test": "true"`, a `pretest`), or a `bin` shim of a
+    dependency;
+  - in `secrets.yml`: the values of its `env` (for example `BASE_SHA` set to
+    the head, which empties the scan range) and its `concurrency` group (a
+    constant group with `cancel-in-progress: true` lets pushes to `main`
+    cancel each other);
+  - `runs-on` (for example `self-hosted`), and a job named `check` in a
+    workflow that is not one of the two required-check workflows.
+
+  Review covers these. Under `CLAUDE.md` (Ticket flow, step 6), changes to
+  workflow permissions, the setup action, `secrets.yml` and the other
+  secret-scan files, the release workflow and any new action are risk class
+  (a) and get two independent reviews; `secrets.yml` also needs the
+  maintainer's OK. Other changes to `ci.yml`, to `package.json` scripts or to
+  an `.npmrc` get one session review and the green required checks.
 - Expressions in `with:` inputs of an action (for example a script input),
   and in `env:` values (that is the allowed way). A new action needs the
   maintainer's OK anyway.
@@ -104,6 +131,8 @@ the real files; every rule id has at least one red case there.
 - `npm` with a denied subcommand inside an `echo` text is reported when it
   follows a space or a quote (`echo "then npm ci"`).
 - `${{` inside a `run` is reported also where it would be harmless.
+- `npm run-script <name>`, and `npm run` for a script the policy does not
+  list, are reported.
 
 ### Dependencies
 
