@@ -2,7 +2,7 @@
 
 The brand of Keepia (Mail, Docs and Archive): **IBM Carbon v11 with Teal as the interactive colour**, the mark and the wordmark `keepia` in IBM Plex Sans.
 
-This repository will hold the Carbon theme and tokens for White and G100, the logo, lockups, app icons and favicons, and a VitePress theme for the products' documentation, released as an npm-format tarball on a GitHub release. The work is planned in [keepia/mail#7](https://github.com/keepia/mail/issues/7) and tracked there. Part 1 set up the repository; part 2 adds the Carbon theme, the tokens and the contrast checks (see Theme); part 4 the VitePress theme (see VitePress). Nothing is released yet.
+This repository will hold the Carbon theme and tokens for White and G100, the logo, lockups, app icons and favicons, and a VitePress theme for the products' documentation, released as an npm-format tarball on a GitHub release. The work is planned in [keepia/mail#7](https://github.com/keepia/mail/issues/7) and tracked there. Part 1 set up the repository; part 2 added the Carbon theme, the tokens and the contrast checks (see Theme); part 4 added the VitePress theme (see VitePress); part 3 adds the logo, lockups, app icons and favicons (see Logo). Nothing is released yet.
 
 **Status: in development.**
 
@@ -22,9 +22,18 @@ npm pack --dry-run --json --ignore-scripts | node scripts/check-pack.mjs   # the
 ```sh
 node scripts/build.mjs
 node scripts/build_vitepress.mjs
+node scripts/build_logo.mjs
+node scripts/build_previews.mjs
+node scripts/render_pngs.mjs
 ```
 
-`scripts/build.mjs` writes `theme/keepia-carbon.css`, `theme/_index.scss`, `theme/tokens.json`, `theme/contrast-report.json`, `fonts/` and `THIRD_PARTY_NOTICES.md` from `theme/brand.json` and the installed Carbon and IBM Plex packages. `scripts/build_vitepress.mjs` then writes `theme/vitepress.css` from `theme/tokens.json` and `scripts/vitepress-map.mjs` (see VitePress). The logo adds its steps later.
+- `scripts/build.mjs` writes `theme/keepia-carbon.css`, `theme/_index.scss`, `theme/tokens.json`, `theme/contrast-report.json`, `fonts/` and `THIRD_PARTY_NOTICES.md` from `theme/brand.json` and the installed Carbon and IBM Plex packages.
+- `scripts/build_vitepress.mjs` writes `theme/vitepress.css` from `theme/tokens.json` and `scripts/vitepress-map.mjs` (see VitePress).
+- `scripts/build_logo.mjs` writes `theme/logo-geometry.json` and the brand SVGs in `brand/` from the logo section of `theme/brand.json`, the colours in `theme/tokens.json` and IBM Plex Sans (outlined with `opentype.js`).
+- `scripts/build_previews.mjs` writes the sign-off sheets `brand/preview-*.svg` from the brand SVGs.
+- `scripts/render_pngs.mjs` renders every PNG in `brand/` with resvg, writes `brand/favicon.ico` and `brand/manifest.json`.
+
+`@resvg/resvg-js` and `opentype.js` are pinned exactly, because their output is committed and compared.
 
 `lightningcss` (`1.33.0`) is pinned exactly, as in pklnx/design-system, like every other dev dependency here: only `scripts/vitepress-theme.test.mjs` uses it, to check how Vite 8's CSS minifier treats `theme/vitepress.css` (the legal comment, the escaping in `url()`), and that result can change between releases of Lightning CSS. Move the pin together with `VITEPRESS_VERSION` (see VitePress).
 
@@ -82,7 +91,7 @@ import './custom.css'; // the product's own rules, if any
 export default DefaultTheme;
 ```
 
-The file's `:root` and `.dark` blocks must come after VitePress's own, so it is imported after the VitePress theme. In `docs/.vitepress/config.mts`, the logo is the product lockup, one file per theme, and the favicon is the mark (the lockup and favicon files arrive with keepia/mail#7, part 3):
+The file's `:root` and `.dark` blocks must come after VitePress's own, so it is imported after the VitePress theme. In `docs/.vitepress/config.mts`, the logo is the product lockup, one file per theme, and the favicon is the mark (the lockup and favicon files are in `brand/`, see Logo):
 
 ```ts
 themeConfig: {
@@ -107,7 +116,51 @@ When the products move to another VitePress version, capture its fixture (see th
 
 ## Logo
 
-The logo arrives with keepia/mail#7, part 3. One rule follows from the theme already: the tile is Teal 60 (`background-brand`) in both themes. In G100 place the tile only on `background` or `layer-01` (3.63:1 and 3.03:1); on `layer-02` it reaches only 2.32:1, so use the white monochrome mark there.
+The mark is a latch: a white bar, a tongue that stops short of it and a chevron, on a Teal 60 tile (keepia/mail#7, maintainer decision 6807193549, "R3"). The wordmark is `keepia` in IBM Plex Sans SemiBold with −1 % tracking; product lockups add the product name in Plex Sans Regular in `text-secondary`. Mail, Docs and Archive share mark and colour.
+
+All files are generated from one source (README, Building): the primitives on a 32-unit grid in `theme/brand.json`. `scripts/build_logo.mjs` turns the chevron, a stroke there, into one filled polygon and writes it with the outlined text to `theme/logo-geometry.json`; every file in `brand/` is drawn from that. The SVGs carry no text, fonts, strokes, styles, scripts, links, gradients, filters or images, so they render the same everywhere.
+
+![Keepia logo on White](brand/preview-white.png)
+
+![Keepia logo on G100](brand/preview-g100.png)
+
+![Keepia app icons and favicons](brand/preview-icons.png)
+
+The sheets are generated (`brand/preview-*.svg`, rendered to PNG at 1 px per unit, so the favicon rasters show at their real size).
+
+### Files
+
+| File | Use |
+| --- | --- |
+| `brand/keepia-mark.svg`, `brand/favicon.svg` | The tile with the white mark (the app icon, the favicon) |
+| `brand/keepia-mark-{teal,black,white}.svg` | The mark without tile, in one colour |
+| `brand/keepia-wordmark-{light,dark,black,white}.svg` | The wordmark alone |
+| `brand/keepia-lockup-{light,dark,black,white}.svg`, `brand/keepia-lockup-stacked-…` | Tile and wordmark, side by side or stacked |
+| `brand/keepia-{mail,docs,archive}-lockup-…` | Product lockups, the same variants |
+| `brand/favicon.ico` | 16, 32 and 48 px; `brand/favicon-{16,32,48}.png` are the same images |
+| `brand/icon-192.png`, `brand/icon-512.png` | Web app manifest, `"purpose": "any"` |
+| `brand/icon-maskable-512.png` (`icon-maskable.svg`) | Web app manifest, `"purpose": "maskable"`: full-bleed Teal, the mark inside the safe circle |
+| `brand/apple-touch-icon.png` (180 px, `apple-touch-icon.svg`) | iOS home screen; full bleed, iOS rounds the corners |
+| `brand/icon-1024.png` | The opaque master for iOS and macOS app icons; per-platform sets wait for a native app |
+| `brand/manifest.json` | Every PNG with its size, its source SVG and both sha256 sums |
+
+`light` is for the White theme (wordmark `text-primary` `#161616`), `dark` for G100 (`#f4f4f4`); `black` and `white` are single colour, with the mark without its tile. In HTML:
+
+```html
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+```
+
+The brand files go into the package with keepia/mail#7, part 5 (maintainer decision M2); until then copy them from a commit of this repository.
+
+### Usage rules
+
+- **Clear space:** keep free space of one bar width (5/32 of the tile edge) around the logo, outside the tile or the lockup, on every side. The sheets show it as a frame.
+- **Minimum size:** the tile 16 px. At 16 px the gap between bar and tongue is still one pixel column of the tile colour (tested).
+- **Tile colour:** Teal 60 (`background-brand`) in both themes. In G100 place the tile only on `background` or `layer-01` (3.63:1 and 3.03:1). On `layer-02` and higher layers it reaches only 2.32:1: use the white mark without tile there.
+- **Single colour:** the mark without tile in Teal 60, black or white; single-colour lockups in black or white.
+- **Do not** recolour the tile per product, add gradients, shadows or outlines, rotate or stretch the mark, set the wordmark in live text in place of the files, or change the spacing in a lockup.
 
 ## Layout
 
@@ -120,7 +173,9 @@ The logo arrives with keepia/mail#7, part 3. One rule follows from the theme alr
 | `.github/dependabot.yml` | Weekly version updates with a 14-day cooldown for npm, GitHub Actions (workflows and the composite action) and Go (`tools/gitleaks`) |
 | `.gitleaks.toml`, `Makefile`, `scripts/secret-scan-*.sh` | The secret scan, taken from keepia/mail |
 | `tools/gitleaks/go.mod` | Only the Go version the secret scan builds gitleaks with; this repository has no Go code |
-| `theme/brand.json` | The brand input of the theme: the Carbon hue that replaces Blue |
+| `theme/brand.json` | The brand input: the Carbon hue that replaces Blue, and the logo primitives and layout |
+| `theme/logo-geometry.json` | The logo geometry derived from `theme/brand.json` (chevron outline, outlined text, lockup layout) |
+| `brand/` | The generated logo files and the sign-off sheets (see Logo) |
 | `theme/keepia-carbon.css`, `theme/_index.scss`, `theme/tokens.json`, `theme/contrast-report.json` | The generated theme (see Theme) |
 | `fonts/` | IBM Plex Sans and Mono (woff2) with `OFL.txt`, copied from the npm packages |
 | `THIRD_PARTY_NOTICES.md` | The packages whose values or files ship, with their licence texts |
@@ -130,6 +185,8 @@ The logo arrives with keepia/mail#7, part 3. One rule follows from the theme alr
 | `scripts/vitepress-map.mjs` | The VitePress theme: variable → token map, the contrast pairs, the overridden and the kept VitePress rules |
 | `scripts/css-selectors.mjs` | CSS parsing, specificity and selector matching for the VitePress tests and the capture |
 | `scripts/capture-vitepress-fixture.mjs` | Captures `scripts/fixtures/vitepress-<version>.json` from the VitePress npm package, run by hand; the tests read the fixture |
+| `scripts/build_logo.mjs`, `scripts/build_previews.mjs`, `scripts/render_pngs.mjs`, `scripts/png.mjs` | Generate the logo files, the sign-off sheets, the PNGs and `favicon.ico` |
+| `scripts/logo.test.mjs` | The logo tests: geometry, pixel equivalence, 16 px gap, hygiene and colours, lockups, freshness, icons, contrast |
 | `scripts/contrast.mjs` | The contrast pairs and the WCAG 2.x ratio |
 | `scripts/build_all.mjs` | `npm run build:all`: the one entry point for all generation steps (see Building) |
 | `scripts/check-pack.mjs` | Fixes the package contents, file by file, and forbids lifecycle scripts |

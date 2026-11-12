@@ -88,7 +88,8 @@ const BADGES = {
   tip: ['tag-background-green', 'tag-color-green'],
   // Carbon's Blue tag; Teal stays for actions and links.
   important: ['tag-background-blue', 'tag-color-blue'],
-  // Yellow only as an area with dark text (#161616 in both themes).
+  // Yellow only as an area with dark text (Gray 100 in both themes: text-primary in White,
+  // text-inverse in G100).
   warning: ['support-warning', T('text-primary', 'text-inverse')],
   caution: ['support-warning', T('text-primary', 'text-inverse')],
   danger: ['tag-background-red', 'tag-color-red'],

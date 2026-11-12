@@ -29,7 +29,9 @@
     "@carbon/type": "11.70.0",
     "@ibm/plex-mono": "2.5.0",
     "@ibm/plex-sans": "1.1.0",
+    "@resvg/resvg-js": "2.6.2",
     "lightningcss": "1.33.0",
+    "opentype.js": "2.0.0",
     "sass": "1.106.1",
     "yaml": "2.9.1"
   }

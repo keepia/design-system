@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img">
+<title>Keepia</title>
+<rect fill="#007d79" width="512" height="512"/>
+<g transform="translate(8 8) scale(15.5)">
+<rect fill="#ffffff" x="7" y="7" width="5" height="18" rx="1"/>
+<rect fill="#ffffff" x="14" y="14.25" width="4" height="3.5"/>
+<path fill="#ffffff" d="M23.0794 5.3995 L14.2457 16 L23.0794 26.6005 L26.9206 23.3995 L20.7543 16 L26.9206 8.6005 Z"/>
+</g>
+</svg>

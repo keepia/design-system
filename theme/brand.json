@@ -1,4 +1,20 @@
 {
   "name": "Keepia",
-  "primary": "teal"
+  "primary": "teal",
+  "logo": {
+    "grid": 32,
+    "tile": { "radius": 7 },
+    "bar": { "x": [7, 12], "y": [7, 25], "radius": 1 },
+    "tongue": { "x": [14, 18], "y": [14.25, 17.75] },
+    "chevron": { "points": [[25, 7], [17.5, 16], [25, 25]], "width": 5, "join": "miter", "miterLimit": 4, "cap": "butt" },
+    "markViewBox": [5, 5, 22, 22],
+    "clearSpace": 5,
+    "minimumPx": 16,
+    "wordmark": { "text": "keepia", "font": "IBMPlexSans-SemiBold", "tracking": -0.01 },
+    "productName": { "font": "IBMPlexSans-Regular" },
+    "products": ["mail", "docs", "archive"],
+    "lockup": { "fontSize": 100, "markScale": 1.15, "gap": 0.4, "stackedMarkScale": 2.3 },
+    "maskable": { "size": 512, "unitPx": 15.5, "safeRadius": 0.4 },
+    "monochrome": { "black": "#000000", "white": "#ffffff" }
+  }
 }

@@ -215,7 +215,8 @@ test('THIRD_PARTY_NOTICES.md names the shipped packages at their installed versi
   // The VitePress theme (keepia/mail#7, part 4): Carbon's font stacks and four Carbon icons.
   assert.ok(notices.includes(`| @carbon/type | ${v('@carbon/type')} | Apache-2.0 | theme/vitepress.css (font stacks) |`));
   assert.ok(notices.includes(`| @carbon/icons | ${v('@carbon/icons')} | Apache-2.0 | theme/vitepress.css (custom-block icons) |`));
-  assert.ok(notices.includes(`| ${v('@ibm/plex-sans')}, ${v('@ibm/plex-mono')} | OFL-1.1 | fonts/ |`));
+  // The logo (part 3): the wordmark and product names are outlines of IBM Plex Sans.
+  assert.ok(notices.includes(`| ${v('@ibm/plex-sans')}, ${v('@ibm/plex-mono')} | OFL-1.1 | fonts/, logo outlines in brand/ |`));
   assert.match(notices, /Apache License\s+Version 2\.0/);
   assert.match(notices, /SIL OPEN FONT LICENSE Version 1\.1/);
 });
