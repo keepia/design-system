@@ -11,7 +11,8 @@
 //   - overrides: every VitePress rule that sets a corner, an outline or a font is
 //     overridden (and the override wins) or kept with a reason (and still wins where it
 //     is a focus rule)
-//   - fonts: every url() resolves to a font file in fonts/
+//   - fonts: every url() resolves to a font file in fonts/ that the package ships
+//     (EXPECTED_FILES of scripts/check-pack.mjs)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -20,13 +21,14 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { COLOR_PROPERTIES, rootClasses } from './capture-vitepress-fixture.mjs';
+import { EXPECTED_FILES } from './check-pack.mjs';
 // lightningcss is an exact pin in package.json (README, "Building" says why).
 import { transform as lightningTransform } from 'lightningcss';
 import {
   compareSpecificity, compoundsOf, elementOf, formatSpecificity, parseCss, selectorMatches, selectorMatchesPath, specificity, splitTopLevel, subjectCompound,
 } from './css-selectors.mjs';
 import {
-  BLOCK_ICONS, CLASSIFIED, CLASSIFIED_GROUPS, CORNERS, CUSTOM_BLOCK_ELEMENTS, DOCSEARCH_CSS_VERSION, DOCSEARCH_MAP, DOCSEARCH_PAIRS, DOCSEARCH_SCOPED, DOCSEARCH_SELECTED_HIT, DOCSEARCH_SELECTORS, FONT_FACES, ICON_MODULES, KEPT, LEGAL_COMMENT, MAP, iconNotice, PAIRS, RINGS, RING_GROUNDS, RULES, STRIPES, VITEPRESS_VERSION, isTargetValue, staticProperties,
+  BLOCK_ICONS, CLASSIFIED, CLASSIFIED_GROUPS, CORNERS, CUSTOM_BLOCK_ELEMENTS, DOCSEARCH_CSS_RANGE, DOCSEARCH_CSS_VERSION, DOCSEARCH_MAP, DOCSEARCH_PAIRS, DOCSEARCH_SCOPED, DOCSEARCH_SELECTED_HIT, DOCSEARCH_SELECTORS, FONT_FACES, ICON_MODULES, KEPT, LEGAL_COMMENT, MAP, iconNotice, PAIRS, RINGS, RING_GROUNDS, RULES, STRIPES, VITEPRESS_VERSION, isTargetValue, staticProperties,
 } from './vitepress-map.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -356,7 +358,10 @@ test("contrast: Carbon's double focus ring reaches 3:1 on every button state", (
 // element or an ancestor (its ancestry: compounds before a `+` or `~` do not count) is
 // inherited instead of the root's values (vitepress.css's DOCSEARCH_SCOPED blocks,
 // keepia/mail#37). The var()s inside a root declaration resolve on the root, without the
-// context, as the browser computes them there.
+// context, as the browser computes them there. The var()s inside a declaration that applies
+// in the context resolve with it, but there a declaration on another compound of the
+// context only adds a possible value and keeps the root's (the context may name elements
+// below the declaring one; keepia/mail#35).
 //
 // It fails where a rule paints a colour of --vp-c-brand-1 on, inside, below or next to (a
 // shared ancestor) an element whose background can be the colour of --vp-c-brand-soft, and
@@ -422,7 +427,8 @@ function appliesIn(d, context) {
 // (value, context) → the colours it can resolve to in `theme` (null for a variable that does
 // not resolve). `context` is a list of compounds (compoundsOf) that describe the element or
 // its ancestors: where a declaration on one of them surely applies, it is inherited instead
-// of the root's value, so the root declarations drop out; other declarations on elements
+// of the root's value, so the root declarations drop out (not inside the value of such a
+// declaration, see candidates); other declarations on elements
 // stay possible values. `without(declaration)` leaves declarations out, for the red cases.
 function resolverFor(theme, { without = () => false, base = fixture.customProperties } = {}) {
   const decls = [...base.filter((d) => !d.async), ...keepiaCustomProperties(), ...base.filter((d) => d.async)].filter((d) => !without(d));
@@ -436,25 +442,32 @@ function resolverFor(theme, { without = () => false, base = fixture.customProper
   // its var()s on the element that declares it, and descendants inherit the result: so
   // only a declaration that surely applies in `context` passes the context on; a root,
   // conditional or other element's declaration resolves its var()s without it.
-  const candidates = (name, context) => {
+  // The context passed on still names the elements below the declaring one (the text's
+  // own compounds), whose declarations the browser does not see there: `.hit { --a:
+  // var(--x) }` takes `--x` on `.hit`, not on a `mark` inside it (keepia/mail#35, comment
+  // 6817584702). So inside a value passed on (`inner`), a local declaration in the context
+  // only adds a possible value and never drops the root's.
+  const candidates = (name, context, inner) => {
     const ds = byName.get(name) ?? [];
     const local = ds.filter((d) => d.scope === 'local');
-    if (local.some((d) => appliesIn(d, context))) return local.map((d) => ({ value: d.value, context: appliesIn(d, context) ? context : [] }));
+    const passed = (d) => (appliesIn(d, context) ? context : []);
+    if (!inner && local.some((d) => appliesIn(d, context))) return local.map((d) => ({ value: d.value, context: passed(d) }));
     const root = ds.filter((d) => d.scope === 'root').sort(later).at(-1);
-    return [...(root ? [root] : []), ...ds.filter((d) => d.scope === 'local' || (d.scope === 'conditional' && (!root || later(d, root) > 0)))].map((d) => ({ value: d.value, context: [] }));
+    return [...(root ? [root] : []), ...ds.filter((d) => d.scope === 'local' || (d.scope === 'conditional' && (!root || later(d, root) > 0)))]
+      .map((d) => ({ value: d.value, context: d.scope === 'local' ? passed(d) : [] }));
   };
-  const resolve = (value, context, seen) => {
+  const resolve = (value, context, seen, inner) => {
     const v = value.trim();
     const parts = splitTopLevel(v, ',').flatMap((p) => splitTopLevel(p, ' '));
-    if (parts.length > 1) return [...new Set(parts.flatMap((p) => resolve(p, context, seen)))];
+    if (parts.length > 1) return [...new Set(parts.flatMap((p) => resolve(p, context, seen, inner)))];
     const m = VAR.exec(v);
     if (!m) return [normColour(v)];
     if (seen.includes(m[1])) return [null];
-    const values = candidates(m[1], context);
-    if (!values.length) return m[2] === undefined ? [null] : resolve(m[2], context, seen);
-    return [...new Set(values.flatMap((x) => resolve(x.value, x.context, [...seen, m[1]])))];
+    const values = candidates(m[1], context, inner);
+    if (!values.length) return m[2] === undefined ? [null] : resolve(m[2], context, seen, inner);
+    return [...new Set(values.flatMap((x) => resolve(x.value, x.context, [...seen, m[1]], x.context.length > 0)))];
   };
-  return (value, context = []) => resolve(value, context, []);
+  return (value, context = []) => resolve(value, context, [], false);
 }
 
 // The compounds of `selector` that describe its subject or the subject's ancestors: the
@@ -555,6 +568,9 @@ test('the fixture holds the colour declarations and custom properties of VitePre
   assert.deepEqual(COLOR_PROPERTIES, ['color', 'background', 'background-color']);
   assert.deepEqual(fixture.colorProperties, COLOR_PROPERTIES, 'the fixture was captured with the capture script\'s colour properties');
   assert.deepEqual(fixture.docsearch, { version: DOCSEARCH_CSS_VERSION, files: ['@docsearch/css/dist/style.css', '@docsearch/css/dist/sidepanel.css'] });
+  // The lowest version VitePress's caret range allows (Review B N1, keepia/design-system#6).
+  assert.equal(DOCSEARCH_CSS_RANGE, '^4.7.0');
+  assert.equal(`^${DOCSEARCH_CSS_VERSION}`, DOCSEARCH_CSS_RANGE, 'the fixture holds the lowest version of the range');
   for (const file of ['styles/vars.css', 'styles/docsearch.css', ...fixture.docsearch.files]) {
     assert.ok(fixture.customProperties.some((d) => d.file === file), `no custom property from ${file}`);
     assert.ok(fixture.colorRules.some((r) => r.file === file) || file === 'styles/vars.css', `no colour rule from ${file}`);
@@ -743,6 +759,40 @@ test('brand-soft guard: the context is the ancestry, and root var() values resol
   assert.equal(modal.length, 0, 'the modal is');
 });
 
+// keepia/mail#35, comment 6817584702 (Review A delta N1 on keepia/design-system#7): a scoped
+// declaration's var()s are computed on its own element, so a declaration on a compound below
+// it must not replace the root's value there.
+test('brand-soft guard: a scoped declaration does not take a deeper compound\'s value in place of the root\'s (keepia/mail#35)', () => {
+  const decl = (selector, property, value) => ({ file: 'probe.css', selector, property, value, media: null, important: false, layer: null, async: false, specificity: specificity(selector) });
+  const base = [decl(':root', '--x', '#007d79'), decl('.hit', '--a', 'var(--x)'), decl('mark', '--x', '#161616')];
+  const resolve = resolverFor('light', { base });
+  const hitMark = ancestry('.hit mark');
+  // The browser: --a on .hit is the root's --x, and mark inherits that value.
+  assert.ok(resolve('var(--a)', hitMark).includes('#007d79'), 'the root\'s --x stays a value of --a');
+  assert.deepEqual(resolve('var(--a)', hitMark).sort(), ['#007d79', '#161616'], 'mark\'s --x only adds a possible value');
+  // A declaration on the element itself still replaces the root's value.
+  assert.deepEqual(resolve('var(--x)', hitMark), ['#161616']);
+  assert.deepEqual(resolve('var(--x)'), ['#007d79', '#161616'], 'no context: every value is possible');
+});
+
+// Review A delta N1/N2 on keepia/design-system#6: the resolver ranks custom properties by
+// specificity and order only, and compares #hex, rgb() and rgba() literals. Neither
+// `!important` nor `@layer` occurs on a custom property of the fixture, and no colour the
+// guard resolves is an hsl() literal; these assertions keep that true for the next capture.
+test('brand-soft guard: the fixture has no !important or @layer custom property and no hsl() colour', () => {
+  assert.deepEqual(fixture.customProperties.filter((d) => d.important).map((d) => `${d.file} ${d.selector} ${d.property}`), []);
+  assert.deepEqual(fixture.customProperties.filter((d) => d.layer !== null).map((d) => `${d.file} ${d.selector} ${d.property}`), []);
+  assert.deepEqual(fixture.colorRules.filter((r) => /hsla?\(/i.test(r.value)).map((r) => `${r.file} ${r.selector} ${r.property}`), []);
+  // hsla() occurs only in DocSearch's modal shadow, which is no colour rule's value.
+  assert.deepEqual([...new Set(fixture.customProperties.filter((d) => /hsla?\(/i.test(d.value)).map((d) => d.property))], ['--docsearch-modal-shadow']);
+  const hsl = [];
+  for (const theme of ['light', 'dark']) {
+    const resolve = resolverFor(theme);
+    for (const r of guardRules()) if (resolve(r.value).some((v) => typeof v === 'string' && /hsla?\(/.test(v))) hsl.push(`${theme} ${r.file} ${r.selector} ${r.property}`);
+  }
+  assert.deepEqual(hsl, []);
+});
+
 test('brand-soft guard: it finds brand-1 text on, inside, above and next to a brand-soft ground', () => {
   const vars = new Map([['--vp-c-brand-1', '#007d79'], ['--vp-c-brand-soft', '#9ef0f0'], ['--vp-c-default-soft', '#9ef0f0'], ['--vp-c-text-1', '#161616']]);
   const resolve = (v) => splitTopLevel(v, ' ').map((p) => { const m = VAR.exec(p); return m ? vars.get(m[1]) ?? null : normColour(p); });
@@ -779,9 +829,10 @@ test('brand-soft guard: it finds brand-1 text on, inside, above and next to a br
 
 // ---------------------------------------------------------------- fonts
 
-test('fonts: every @font-face url() resolves to a font file in fonts/', () => {
+test('fonts: every @font-face url() resolves to a font file in the package', () => {
   const faces = parsed.atRules.filter((a) => a.name === 'font-face');
   assert.equal(faces.length, FONT_FACES.length);
+  assert.ok(EXPECTED_FILES.includes(CSS_PATH), `${CSS_PATH} is in the package`);
   for (const f of faces) {
     const src = f.decls.find((d) => d.prop === 'src').value;
     const urls = [...src.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]);
@@ -789,6 +840,7 @@ test('fonts: every @font-face url() resolves to a font file in fonts/', () => {
     const file = path.posix.normalize(path.posix.join(path.posix.dirname(CSS_PATH), urls[0]));
     // fonts/ is what scripts/build.mjs writes and what the package ships (keepia/mail#7, part 5).
     assert.match(file, /^fonts\/IBMPlex(Sans|Mono)-[A-Za-z]+\.woff2$/, `${file} is not in fonts/`);
+    assert.ok(EXPECTED_FILES.includes(file), `${file} is not in the package (check-pack EXPECTED_FILES)`);
     assert.ok(existsSync(path.join(ROOT, file)), `${file} does not exist`);
     assert.ok(f.decls.some((d) => d.prop === 'font-display' && d.value === 'swap'));
   }

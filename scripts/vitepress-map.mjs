@@ -217,7 +217,11 @@ export const MAP = {
 // button Carbon's success notification ground.
 // The selected hit keeps the Teal ground, `highlight` (= brand-soft), and its brand-1 text
 // becomes text-primary instead (maintainer decision, keepia/mail#37): see DOCSEARCH_SELECTED_HIT.
-// The fixture's @docsearch/css is the lowest version VitePress's ^4.7.0 range allows.
+// VitePress 2.0.0-alpha.20 depends on @docsearch/css ^4.7.0 (a range, not a pin), and the
+// fixture's @docsearch/css is 4.7.0, the lowest version alpha.20 allows. A fresh install
+// resolves a later 4.7.x (4.7.1 on 2026-11-11 gave the same capture apart from the version);
+// the products' lockfile decides which one their docs get (Review B N1, keepia/design-system#6).
+export const DOCSEARCH_CSS_RANGE = '^4.7.0';
 export const DOCSEARCH_CSS_VERSION = '4.7.0';
 export const DOCSEARCH_MAP = {
   '--docsearch-soft-primary-color': T('background'),
