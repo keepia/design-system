@@ -1,0 +1,17 @@
+{
+ "light": {
+  "background": "#ffffff",
+  "interactive": "#009d9a",
+  "link-visited": "#8a3ffc",
+  "old-token": "#123456"
+ },
+ "dark": {
+  "background": "#161616",
+  "interactive": "#009d9a",
+  "link-visited": "#be95ff"
+ },
+ "changed": {
+  "light": { "interactive": "#009d9a" },
+  "dark": { "interactive": "#009d9a" }
+ }
+}

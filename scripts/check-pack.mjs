@@ -4,18 +4,90 @@
 //
 // Fails unless the tarball holds exactly EXPECTED_FILES and package.json has no
 // lifecycle script. The file list is the only guard that keeps build inputs
-// (theme/brand.json, theme/logo-geometry.json, scripts) out of a public release
-// that consumers pin by URL, so the list is spelled out file by file. Until the
-// theme, fonts and logos arrive (keepia/mail#7, parts 2 to 5) the package holds
-// only the three files npm always packs.
+// (theme/brand.json, theme/logo-geometry.json, scripts), the sign-off sheets
+// (brand/preview-*) and dev dependencies such as lightningcss out of a public
+// release that consumers pin by URL, so the list is spelled out file by file.
+// The brand files ship (keepia/mail#7, maintainer decision M2): the marks,
+// wordmarks, lockups, app icons and favicons, all rights reserved (LICENSE,
+// Exceptions).
 
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+// The brand files of the package: every file in brand/ except the sign-off
+// sheets and their build record (brand/preview-*, brand/manifest.json).
+export const BRAND_FILES = [
+  'brand/apple-touch-icon.png',
+  'brand/apple-touch-icon.svg',
+  'brand/favicon-16.png',
+  'brand/favicon-32.png',
+  'brand/favicon-48.png',
+  'brand/favicon.ico',
+  'brand/favicon.svg',
+  'brand/icon-1024.png',
+  'brand/icon-192.png',
+  'brand/icon-512.png',
+  'brand/icon-maskable-512.png',
+  'brand/icon-maskable.svg',
+  'brand/keepia-archive-lockup-black.svg',
+  'brand/keepia-archive-lockup-dark.svg',
+  'brand/keepia-archive-lockup-light.svg',
+  'brand/keepia-archive-lockup-stacked-black.svg',
+  'brand/keepia-archive-lockup-stacked-dark.svg',
+  'brand/keepia-archive-lockup-stacked-light.svg',
+  'brand/keepia-archive-lockup-stacked-white.svg',
+  'brand/keepia-archive-lockup-white.svg',
+  'brand/keepia-docs-lockup-black.svg',
+  'brand/keepia-docs-lockup-dark.svg',
+  'brand/keepia-docs-lockup-light.svg',
+  'brand/keepia-docs-lockup-stacked-black.svg',
+  'brand/keepia-docs-lockup-stacked-dark.svg',
+  'brand/keepia-docs-lockup-stacked-light.svg',
+  'brand/keepia-docs-lockup-stacked-white.svg',
+  'brand/keepia-docs-lockup-white.svg',
+  'brand/keepia-lockup-black.svg',
+  'brand/keepia-lockup-dark.svg',
+  'brand/keepia-lockup-light.svg',
+  'brand/keepia-lockup-stacked-black.svg',
+  'brand/keepia-lockup-stacked-dark.svg',
+  'brand/keepia-lockup-stacked-light.svg',
+  'brand/keepia-lockup-stacked-white.svg',
+  'brand/keepia-lockup-white.svg',
+  'brand/keepia-mail-lockup-black.svg',
+  'brand/keepia-mail-lockup-dark.svg',
+  'brand/keepia-mail-lockup-light.svg',
+  'brand/keepia-mail-lockup-stacked-black.svg',
+  'brand/keepia-mail-lockup-stacked-dark.svg',
+  'brand/keepia-mail-lockup-stacked-light.svg',
+  'brand/keepia-mail-lockup-stacked-white.svg',
+  'brand/keepia-mail-lockup-white.svg',
+  'brand/keepia-mark-black.svg',
+  'brand/keepia-mark-teal.svg',
+  'brand/keepia-mark-white.svg',
+  'brand/keepia-mark.svg',
+  'brand/keepia-wordmark-black.svg',
+  'brand/keepia-wordmark-dark.svg',
+  'brand/keepia-wordmark-light.svg',
+  'brand/keepia-wordmark-white.svg',
+];
+
 export const EXPECTED_FILES = [
   'LICENSE',
   'README.md',
+  'THIRD_PARTY_NOTICES.md',
+  ...BRAND_FILES,
+  'fonts/IBMPlexMono-Regular.woff2',
+  'fonts/IBMPlexMono-SemiBold.woff2',
+  'fonts/IBMPlexSans-Italic.woff2',
+  'fonts/IBMPlexSans-Light.woff2',
+  'fonts/IBMPlexSans-Regular.woff2',
+  'fonts/IBMPlexSans-SemiBold.woff2',
+  'fonts/OFL.txt',
   'package.json',
+  'theme/_index.scss',
+  'theme/keepia-carbon.css',
+  'theme/tokens.json',
+  'theme/vitepress.css',
 ];
 
 // Scripts that npm or pnpm run on install or pack. A consumer's pnpm with

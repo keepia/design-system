@@ -7,7 +7,9 @@
 //
 // Run it by hand when the products upgrade VitePress (they pin it exactly), from the
 // repository root, on the unpacked npm tarballs of VitePress and of the @docsearch/css version
-// DOCSEARCH_CSS_VERSION in scripts/vitepress-map.mjs names:
+// DOCSEARCH_CSS_VERSION in scripts/vitepress-map.mjs names: the lowest version VitePress's
+// @docsearch/css range (DOCSEARCH_CSS_RANGE, `^4.7.0` for alpha.20) allows, since the range
+// is not a pin:
 //
 //   dir="$(mktemp -d)"
 //   (cd "$dir" && npm pack vitepress@2.0.0-alpha.20 @docsearch/css@4.7.0 \

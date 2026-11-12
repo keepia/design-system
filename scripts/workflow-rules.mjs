@@ -13,7 +13,7 @@ export const RULES = [
   'pin', 'flow-uses', 'local-action',
   'permissions', 'persist-credentials', 'on', 'required',
   'run-expression', 'run', 'shell', 'npm',
-  'setup', 'node-version', 'build-entry', 'scripts', 'dependabot',
+  'setup', 'node-version', 'build-entry', 'scripts', 'dependabot', 'release-job',
 ];
 
 export const SETUP_ACTION = '.github/actions/setup/action.yml';
@@ -26,6 +26,31 @@ const WORKFLOW_KEYS = ['name', 'on', 'permissions', 'concurrency', 'defaults', '
 const REQUIRED_JOB_KEYS = ['name', 'runs-on', 'timeout-minutes', 'env', 'steps'];
 const REQUIRED_STEP_KEYS = ['name', 'id', 'uses', 'with', 'run', 'env', 'shell'];
 const REQUIRED_ON = { push: { branches: ['main'] }, pull_request: null };
+// The release workflow (keepia/mail#7, part 5) is started by hand, with a dry-run input.
+const RELEASE_ON = {
+  workflow_dispatch: {
+    inputs: {
+      // A dry run by default: one click on "Run workflow" releases nothing (Review B note 5 on
+      // keepia/design-system#8); the real release needs the box unticked.
+      dry_run: { description: 'Build and pack, but attest nothing and create no tag or release (untick for the real release)', type: 'boolean', default: true },
+    },
+  },
+};
+// The jobs of release.yml that hold write tokens (`releaseJob` in the policy) download the built
+// artifact, check its checksum, attest it and call gh, and nothing else: no checkout, no local
+// action, no repository or dependency code in a `run` (ported from pklnx/design-system's
+// releaseJobProblems), no `shell`, no job `env`, `defaults`, `container`, `services` or
+// `continue-on-error`, no `continue-on-error` on a step, step env only from RELEASE_JOB_ENV, the
+// dry-run condition exactly, so a dry run attests nothing and creates no tag or release, and
+// `needs` exactly as the policy says, so a failed build or attestation stops the release.
+export const RELEASE_JOB_IF = '${{ !inputs.dry_run }}';
+const RELEASE_JOB_ENV = ['GH_TOKEN', 'TAG', 'TARBALL'];
+const RELEASE_JOB_DENIED_KEYS = ['env', 'defaults', 'container', 'services', 'continue-on-error'];
+// Commands that run repository or dependency code: runtimes and package managers, a path under
+// scripts/ or node_modules/, or a repository-relative executable (./x, ../x) as a command.
+const CODE_COMMAND = /(?<![\w./-])(?:node|nodejs|npm|npx|pnpm|yarn|corepack|python[\d.]*|pip[\d.]*|pipx|ruby|perl|deno|bun)(?![\w-])/;
+const CODE_PATH = /(?<![\w-])(?:scripts|node_modules)\//;
+const RELATIVE_COMMAND = /(?:^|[;&|(`{]|\$\()\s*\.{1,2}\//;
 
 // One entry per workflow in .github/workflows; a workflow without an entry fails (scope).
 // `jobs` lists every job: `permissions` absent means the job has no `permissions` key;
@@ -55,12 +80,26 @@ export const POLICY = {
         },
       },
     },
+    'release.yml': {
+      topKeys: WORKFLOW_KEYS,
+      permissions: {},
+      on: RELEASE_ON,
+      scripts: [],
+      jobs: {
+        build: { permissions: { contents: 'read' }, scripts: ['check-pack.mjs', 'release-notes.mjs'] },
+        attest: { permissions: { 'id-token': 'write', attestations: 'write' }, releaseJob: true, needs: ['build'] },
+        release: { permissions: { contents: 'write' }, releaseJob: true, needs: ['build', 'attest'] },
+      },
+      buildEntry: { job: 'build', step: 'Generated files are committed', commands: ['npm run build:all'] },
+    },
   },
   actionKeys: ['name', 'description', 'runs'],
-  // The scripts `npm run <name>` may run, with no further argument.
+  // The scripts `npm run <name>` may run, with no further argument. The release builds with the
+  // same entry point as CI, so it adds none.
   npmRun: ['build:all'],
-  // The exact `npm pack` commands (the words after `npm`).
-  npmPack: ['pack --dry-run --json --ignore-scripts'],
+  // The exact `npm pack` commands (the words after `npm`): the contents check (ci.yml,
+  // release.yml) and the release's pack into its destination.
+  npmPack: ['pack --dry-run --json --ignore-scripts', 'pack --ignore-scripts --pack-destination "$dist"'],
   // The inputs an actions/checkout in a required job may set, so it checks out the PR's code.
   requiredCheckoutInputs: ['persist-credentials', 'fetch-depth'],
   // The env names, per step name, a step of a composite action may set.
@@ -414,6 +453,7 @@ function checkWorkflow(root, policy, add) {
       }
     }
     const steps = stepsOf(job, add, `job ${id}`);
+    if (jobPolicy?.releaseJob) checkReleaseJob(id, jp, steps, add, jobPolicy);
     if (jobPolicy?.required) {
       checkStepKeys(steps, jobPolicy.stepEnv ?? {}, add, `job ${id}`);
       // A required job checks out the PR's own code: no ref, repository or path input.
@@ -439,6 +479,11 @@ function checkWorkflow(root, policy, add) {
       if (str(valueOf(valueOf(job, 'env'), 'IBM_TELEMETRY_DISABLED')) !== 'true') add(jp.key, 'setup', `job ${id} runs npm without env IBM_TELEMETRY_DISABLED: 'true'`);
     }
   }
+  // A job of the policy that the workflow lacks (removed or renamed) is a finding, so a check
+  // tied to a job name cannot be skipped by renaming the job.
+  for (const [id, jobPolicy] of Object.entries(policy.jobs ?? {})) {
+    if (!pairOf(jobsPair.value, id)) add(jobsPair.key, jobPolicy.releaseJob ? 'release-job' : 'scope', `job ${id} of the policy is missing`);
+  }
   if (policy.buildEntry) {
     const { job: id, step: name, commands } = policy.buildEntry;
     const job = valueOf(jobsPair.value, id);
@@ -449,6 +494,47 @@ function checkWorkflow(root, policy, add) {
     const npmRuns = run.split('\n').map((l) => l.trim()).filter((l) => /^npm run /.test(l));
     if (!equal(npmRuns, commands)) add(where, 'build-entry', `"${name}" runs ${JSON.stringify(npmRuns)}, not ${JSON.stringify(commands)}`);
     if (!/git status --porcelain[\s\S]*::error::/.test(run)) add(where, 'build-entry', `"${name}" lost its git status --porcelain drift check`);
+  }
+}
+
+// A job of release.yml that holds write tokens (see RELEASE_JOB_IF).
+function checkReleaseJob(id, jp, steps, add, jobPolicy) {
+  const job = jp.value;
+  const where = `job ${id}`;
+  const cond = pairOf(job, 'if');
+  if (str(cond?.value) !== RELEASE_JOB_IF) add(cond?.key ?? jp.key, 'release-job', `${where}: if must be exactly ${RELEASE_JOB_IF}, so a dry run attests nothing and creates no tag or release`);
+  // `needs: build` and `needs: [build]` are the same to GitHub.
+  const needs = pairOf(job, 'needs');
+  const got = needs ? toJS(needs.value) : [];
+  if (!equal(typeof got === 'string' ? [got] : got, jobPolicy.needs ?? [])) {
+    add(needs?.key ?? jp.key, 'release-job', `${where}: needs must be exactly ${JSON.stringify(jobPolicy.needs ?? [])}, so a failed earlier job stops it`);
+  }
+  for (const k of RELEASE_JOB_DENIED_KEYS) {
+    const p = pairOf(job, k);
+    if (p) add(p.key, 'release-job', `${where}: ${k} is not allowed in a job that holds write tokens`);
+  }
+  for (const step of steps) {
+    const uses = pairOf(step, 'uses');
+    const u = str(uses?.value) ?? '';
+    if (/^actions\/checkout@/i.test(u)) add(uses.key, 'release-job', `${where}: checks out the repository (${u})`);
+    if (u.startsWith('./') || u.startsWith('../')) add(uses.key, 'release-job', `${where}: uses the local action ${u}`);
+    const shell = pairOf(step, 'shell');
+    if (shell) add(shell.key, 'release-job', `${where}: sets a shell, so a run step could run another interpreter (only the workflow default bash)`);
+    const coe = pairOf(step, 'continue-on-error');
+    if (coe) add(coe.key, 'release-job', `${where}: continue-on-error on a step, so a failed check would not stop the job`);
+    const env = pairOf(step, 'env');
+    if (env && !isMap(env.value)) add(env.key, 'release-job', `${where}: step env is not a mapping`);
+    for (const p of isMap(env?.value) ? env.value.items : []) {
+      if (!RELEASE_JOB_ENV.includes(keyOf(p))) add(p.key, 'release-job', `${where}: step env ${keyOf(p)} is not one of ${RELEASE_JOB_ENV.join(', ')}`);
+    }
+    const run = pairOf(step, 'run');
+    const body = str(run?.value);
+    if (body === undefined) continue;
+    // Shell comment lines are no code.
+    const code = body.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    const hit = CODE_COMMAND.exec(code) ?? CODE_PATH.exec(code);
+    if (hit) add(run.key, 'release-job', `${where}: a run step runs repository or dependency code (${hit[0]})`);
+    if (code.split('\n').some((l) => RELATIVE_COMMAND.test(l))) add(run.key, 'release-job', `${where}: a run step runs a repository-relative command`);
   }
 }
 

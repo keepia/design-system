@@ -1,15 +1,46 @@
 {
   "name": "@keepia/design-system",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Keepia design system: Carbon theme, tokens and logos of the Keepia brand",
+  "license": "MIT, brand marks excepted",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/keepia/design-system.git"
   },
   "homepage": "https://github.com/keepia/design-system#readme",
-  "files": [],
+  "bugs": {
+    "url": "https://github.com/keepia/mail/issues"
+  },
+  "files": [
+    "theme/keepia-carbon.css",
+    "theme/vitepress.css",
+    "theme/_index.scss",
+    "theme/tokens.json",
+    "fonts/*.woff2",
+    "fonts/OFL.txt",
+    "brand/keepia-*.svg",
+    "brand/favicon*",
+    "brand/icon-*.png",
+    "brand/icon-maskable.svg",
+    "brand/apple-touch-icon.*",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "exports": {
+    "./theme/keepia-carbon.css": "./theme/keepia-carbon.css",
+    "./theme/vitepress.css": "./theme/vitepress.css",
+    "./theme": {
+      "sass": "./theme/_index.scss"
+    },
+    "./theme/tokens.json": "./theme/tokens.json",
+    "./fonts/*": "./fonts/*",
+    "./brand/*": "./brand/*",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "devEngines": {
     "runtime": {
       "name": "node",
@@ -20,6 +51,14 @@
   "scripts": {
     "build:all": "node scripts/build_all.mjs",
     "test": "node --test \"scripts/*.test.mjs\""
+  },
+  "peerDependencies": {
+    "@carbon/styles": "^1.118.0"
+  },
+  "peerDependenciesMeta": {
+    "@carbon/styles": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@carbon/colors": "11.61.0",

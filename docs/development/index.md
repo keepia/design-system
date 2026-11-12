@@ -45,12 +45,18 @@ not `false`.
   actions and reusable workflows are not used.
 - Each workflow's top-level keys are `name`, `on`, `permissions`,
   `concurrency`, `defaults` and `jobs` at most [`top-keys`]. Its top-level
-  and job-level `permissions` equal the policy table (today `contents: read`
-  at the top level, none per job) [`permissions`].
+  and job-level `permissions` equal the policy table (`contents: read` at the
+  top level and none per job in `ci.yml` and `secrets.yml`; in `release.yml`
+  none at the top level, `contents: read` for `build`, `id-token` and
+  `attestations: write` for `attest`, `contents: write` for `release`)
+  [`permissions`]. A job of the policy that the workflow lacks is a finding
+  too [`scope`, or `release-job` for `attest` and `release`].
 - Every `actions/checkout` sets `persist-credentials: false`
   [`persist-credentials`].
 - `ci.yml` and `secrets.yml` run on `push` to `main` and on every
-  `pull_request`, with no filter and no other trigger [`on`]. Their required
+  `pull_request`, with no filter and no other trigger; `release.yml` runs
+  only on `workflow_dispatch`, with exactly the `dry_run` input (a boolean,
+  on by default, so a real release needs the box unticked) [`on`]. Their required
   jobs (`check`, `secret-scan`) are the only job in their file, are named
   after their id, have only `name`, `runs-on`, `timeout-minutes`, `env` (as
   in the policy) and `steps`, and their steps only `name`, `id`, `uses`,
@@ -70,7 +76,8 @@ not `false`.
 - npm runs only in exact forms, with no further option: `npm test`, `npm run
   <name>` for a name the policy lists (today `build:all`), the `npm pack`
   commands the policy lists (today `npm pack --dry-run --json
-  --ignore-scripts`), and `npm ci --ignore-scripts` once, in the setup
+  --ignore-scripts` and the release's `npm pack --ignore-scripts
+  --pack-destination "$dist"`), and `npm ci --ignore-scripts` once, in the setup
   action. So `--script-shell=…`, `--prefix=…` or `--ignore-scripts=false`
   cannot be added. `npx`, `pnpm`, `yarn` and `corepack` are not used [`npm`].
 - `actions/setup-node` appears only in the setup action, with
@@ -78,11 +85,26 @@ not `false`.
   uses the setup action, and IBM's telemetry is off wherever npm runs
   [`setup`]. The setup action reads `.node-version`, and no key
   `node-version` exists [`node-version`].
-- CI's step "Generated files are committed" runs exactly `npm run build:all`
-  and keeps its drift check, and the README calls the same entry point
-  [`build-entry`]. `run` calls only the scripts the policy lists with `node
-  scripts/…`, also after node options or in quotes (today `check-pack.mjs`
-  in `ci.yml`) [`scripts`].
+- The step "Generated files are committed" of CI's `check` and of the
+  release's `build` runs exactly `npm run build:all` and keeps its drift
+  check, and the README calls the same entry point [`build-entry`]. `run`
+  calls only the scripts the policy lists with `node scripts/…`, also after
+  node options or in quotes (today `check-pack.mjs` in `ci.yml`, and
+  `check-pack.mjs` and `release-notes.mjs` in the release's `build` job)
+  [`scripts`].
+- The jobs of `release.yml` that hold write tokens, `attest` and `release`,
+  run no repository or dependency code (ported from pklnx/design-system):
+  no `actions/checkout` and no local action; no `run` line that calls
+  `node`, `npm`, `npx`, `pnpm`, `yarn`, `corepack`, Python, pip, Ruby, Perl,
+  Deno or Bun, names a path under `scripts/` or `node_modules/`, or starts a
+  repository-relative command (`./x`, `../x`); shell comment lines do not
+  count. They set no `shell`, no job `env`, `defaults`, `container`,
+  `services` or `continue-on-error`, no `continue-on-error` on a step, and a
+  step's `env` only `GH_TOKEN`, `TAG` and `TARBALL`. Their `if` is exactly
+  `${{ !inputs.dry_run }}`, so a dry run attests nothing and creates no tag
+  or release. Their `needs` are exactly `build` for `attest` and `build,
+  attest` for `release`, so a failed build or attestation stops the release
+  [`release-job`].
 - Dependabot covers npm, the workflows and the composite action, and
   `tools/gitleaks`, weekly with a 14-day cooldown, exactly as in the policy
   [`dependabot`].
@@ -124,6 +146,15 @@ the real files; every rule id has at least one red case there.
   maintainer's OK anyway.
 - That a version comment matches its SHA: that needs the network, and
   Dependabot keeps both in step.
+- In the release jobs that hold write tokens: code run through a shell
+  variable; an interpreter or `source`/`.` given a path as its argument (for
+  example `bash dist/x.sh`, `sh -c "$(cat dist/notes.md)"`, `source ./x` or
+  `. ./x`), since only the command word is checked; writes to
+  `"$GITHUB_ENV"`; a repository cloned and built there (`git clone … &&
+  make`); and what an action's `with:` inputs make it do. Review covers
+  these; the release workflow is risk class (a). Checked as rules, not left
+  to review: `continue-on-error` on these jobs or their steps, and their
+  `needs`.
 
 **Known false positives (fail closed).**
 - Any key named `uses` is checked, also a step input or an env variable;
