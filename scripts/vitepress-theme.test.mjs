@@ -353,8 +353,10 @@ test("contrast: Carbon's double focus ring reaches 3:1 on every button state", (
 // normalised, and a multi-part `background` counts with each of its parts. Where the text
 // meets the ground, its colour resolves in their context: a declaration on one plain
 // compound (no pseudo-class, no @media) that the text's or ground's selector names as the
-// element or an ancestor is inherited instead of the root's values (vitepress.css's
-// DOCSEARCH_SCOPED blocks, keepia/mail#37).
+// element or an ancestor (its ancestry: compounds before a `+` or `~` do not count) is
+// inherited instead of the root's values (vitepress.css's DOCSEARCH_SCOPED blocks,
+// keepia/mail#37). The var()s inside a root declaration resolve on the root, without the
+// context, as the browser computes them there.
 //
 // It fails where a rule paints a colour of --vp-c-brand-1 on, inside, below or next to (a
 // shared ancestor) an element whose background can be the colour of --vp-c-brand-soft, and
@@ -430,12 +432,16 @@ function resolverFor(theme, { without = () => false, base = fixture.customProper
     byName.get(d.property).push({ ...d, order, scope: scopeOf(d, theme) });
   });
   const later = (a, b) => compareSpecificity(a.specificity, b.specificity) || (a.order - b.order);
+  // Each candidate with the context its own var()s resolve in. A custom property computes
+  // its var()s on the element that declares it, and descendants inherit the result: so
+  // only a declaration that surely applies in `context` passes the context on; a root,
+  // conditional or other element's declaration resolves its var()s without it.
   const candidates = (name, context) => {
     const ds = byName.get(name) ?? [];
     const local = ds.filter((d) => d.scope === 'local');
-    if (local.some((d) => appliesIn(d, context))) return local.map((d) => d.value);
+    if (local.some((d) => appliesIn(d, context))) return local.map((d) => ({ value: d.value, context: appliesIn(d, context) ? context : [] }));
     const root = ds.filter((d) => d.scope === 'root').sort(later).at(-1);
-    return [...(root ? [root] : []), ...ds.filter((d) => d.scope === 'local' || (d.scope === 'conditional' && (!root || later(d, root) > 0)))].map((d) => d.value);
+    return [...(root ? [root] : []), ...ds.filter((d) => d.scope === 'local' || (d.scope === 'conditional' && (!root || later(d, root) > 0)))].map((d) => ({ value: d.value, context: [] }));
   };
   const resolve = (value, context, seen) => {
     const v = value.trim();
@@ -446,9 +452,19 @@ function resolverFor(theme, { without = () => false, base = fixture.customProper
     if (seen.includes(m[1])) return [null];
     const values = candidates(m[1], context);
     if (!values.length) return m[2] === undefined ? [null] : resolve(m[2], context, seen);
-    return [...new Set(values.flatMap((x) => resolve(x, context, [...seen, m[1]])))];
+    return [...new Set(values.flatMap((x) => resolve(x.value, x.context, [...seen, m[1]])))];
   };
   return (value, context = []) => resolve(value, context, []);
+}
+
+// The compounds of `selector` that describe its subject or the subject's ancestors: the
+// list cut at the last `+` or `~` (a compound before a sibling combinator is a sibling,
+// whose custom properties the subject does not inherit; cutting there errs towards a
+// finding).
+function ancestry(selector) {
+  const cs = compoundsOf(selector);
+  const cut = cs.findLastIndex((c) => c.combinator === '+' || c.combinator === '~');
+  return cut < 0 ? cs : cs.slice(cut);
 }
 
 // Whether compound `inner` names the same element as `outer` or a less specific description
@@ -482,7 +498,9 @@ const otherProviders = (a, b) => PROVIDERS.some((p, i) => p(a) && PROVIDERS.some
 // <body>: `portalContainer ?? document.body` in @docsearch/js 4.7.0, and VitePress sets no
 // portalContainer. So a rule that names an ancestor other than html, body, .dark or a
 // DocSearch-* class (.vp-doc a, .custom-block a) never reaches it.
-const PORTAL_GROUND = (file) => file === '@docsearch/css/dist/style.css';
+// The search button (.DocSearch-Button*) is in the nav bar, not in the portal.
+const PORTAL_GROUND = (g) => g.file === '@docsearch/css/dist/style.css'
+  && !compoundsOf(g.selector).some((c) => c.classes.some((k) => k.startsWith('DocSearch-Button')));
 const outsidePortal = (compounds) => compounds.slice(0, -1).filter(named)
   .some((c) => c.ids.length || (c.type && !['html', 'body'].includes(c.type)) || c.classes.some((k) => k !== 'dark' && !k.startsWith('DocSearch-')));
 function brandSoftFindings(rules, resolve, brand1, soft) {
@@ -498,17 +516,20 @@ function brandSoftFindings(rules, resolve, brand1, soft) {
     for (const t of texts) {
       if ((g.scoped && t.scoped && g.file !== t.file) || otherProviders(g.file, t.file)) continue;
       const tCompounds = compoundsOf(t.selector);
-      if (PORTAL_GROUND(g.file) && outsidePortal(tCompounds)) continue;
+      if (PORTAL_GROUND(g) && outsidePortal(tCompounds)) continue;
       const inside = tCompounds.some((c) => within(c, gSubject));
       const above = !ownColour && gCompounds.slice(0, -1).some((c) => within(c, tCompounds.at(-1)));
       const nextTo = gAncestors.some((gc) => tCompounds.slice(0, -1).filter(named).some((tc) => within(tc, gc) || within(gc, tc)));
       // The text's colour where it meets the ground: on or inside it, the text's element sits
-      // in the ground's element (every compound of the ground describes it or an ancestor);
-      // next to it, under the ground's ancestors; above it, the text's own colour inherits down.
+      // in the ground's element (the ground's ancestry describes it or an ancestor); next to
+      // it, under the ground's ancestors; above it, the text's own colour inherits down. Only
+      // the ancestry counts (see ancestry): siblings pass nothing on.
+      const tAncestry = ancestry(t.selector);
+      const gAncestry = ancestry(g.selector);
       const brandAt = (context) => resolve(t.value, context).includes(normColour(brand1));
-      const meets = (inside && brandAt([...tCompounds, ...gCompounds]))
-        || (nextTo && brandAt([...tCompounds, ...gAncestors]))
-        || (above && brandAt(tCompounds));
+      const meets = (inside && brandAt([...tAncestry, ...gAncestry]))
+        || (nextTo && brandAt([...tAncestry, ...gAncestry.slice(0, -1)]))
+        || (above && brandAt(tAncestry));
       if (meets) findings.push(`${t.file} ${t.selector} { color: ${t.value} } on ${g.file} ${g.selector} { ${g.property}: ${g.value} }`);
     }
   }
@@ -652,8 +673,8 @@ test('contrast: the DocSearch text pairs reach 4.5:1 in both themes, through eve
     for (const theme of ['light', 'dark']) {
       const resolve = resolverFor(theme);
       // The text sits inside the ground: both selectors describe its element or its ancestors.
-      const groundContext = p.ground ? compoundsOf(p.ground[1]) : [];
-      const fgs = [...new Set(p.rules.flatMap(([, selector]) => resolve(`var(${p.fg})`, [...compoundsOf(selector), ...groundContext])))];
+      const groundContext = p.ground ? ancestry(p.ground[1]) : [];
+      const fgs = [...new Set(p.rules.flatMap(([, selector]) => resolve(`var(${p.fg})`, [...ancestry(selector), ...groundContext])))];
       const grounds = resolve(`var(${p.on})`, groundContext);
       for (const fg of fgs) for (const g of grounds) {
         assert.match(`${fg}${g}`, /^#[0-9a-f]{6}#[0-9a-f]{6}$/, `${theme} ${p.where}: ${fg} on ${g} is not an opaque pair`);
@@ -672,6 +693,54 @@ test('contrast: the DocSearch text pairs reach 4.5:1 in both themes, through eve
   assert.equal(ds.dark.get('--docsearch-hit-highlight-color'), b.dark.get('--vp-c-brand-soft'));
   assert.equal(ratio(b.light.get('--vp-c-text-1'), ds.light.get('--docsearch-hit-highlight-color')).toFixed(2), '13.94');
   assert.equal(ratio(b.dark.get('--vp-c-text-1'), ds.dark.get('--docsearch-hit-highlight-color')).toFixed(2), '13.73');
+  // The hovered or focused action button in the selected hit lays rgba(0, 0, 0, 0.2) over the
+  // Teal ground (not opaque, so not a pair above); its icon inherits the action's text-primary.
+  for (const state of [':hover', ':focus']) {
+    const layer = fixture.colorRules.filter((r) => r.file === '@docsearch/css/dist/style.css' && r.selector === `.DocSearch-Hit-action-button${state}`);
+    // @docsearch/css has the rule twice (plain and under prefers-reduced-motion), both the same.
+    assert.deepEqual([...new Set(layer.map((r) => `${r.property}: ${normColour(r.value)}`))], ['background: rgba(0, 0, 0, 0.2)'], state);
+  }
+  const over = (hex, alpha) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - alpha)).toString(16).padStart(2, '0')).join('')}`;
+  const composite = { light: over(ds.light.get('--docsearch-hit-highlight-color'), 0.2), dark: over(ds.dark.get('--docsearch-hit-highlight-color'), 0.2) };
+  assert.deepEqual(composite, { light: '#7ec0c0', dark: '#022226' });
+  assert.equal(ratio(b.light.get('--vp-c-text-1'), composite.light).toFixed(2), '8.78');
+  assert.equal(ratio(b.dark.get('--vp-c-text-1'), composite.dark).toFixed(2), '15.16');
+});
+
+test('brand-soft guard: the context is the ancestry, and root var() values resolve on the root (Review A, keepia/design-system#7)', () => {
+  const b = blocks();
+  const resolve = resolverFor('light');
+  const brand1 = b.light.get('--vp-c-brand-1');
+  const soft = b.light.get('--vp-c-brand-soft');
+  const r = (file, selector, property, value) => ({ file, selector, property, value, scoped: false });
+  const DSF = '@docsearch/css/dist/style.css';
+  assert.deepEqual(ancestry('.a + .b > c ~ d e').map((c) => c.type ?? c.classes[0]), ['d', 'e']);
+  assert.deepEqual(ancestry('.p .a .b').length, 3);
+  // 1. A selected hit's next sibling is not selected: its marks stay brand-1.
+  const sibling = brandSoftFindings([
+    r(CSS_PATH, '.DocSearch-Hit[aria-selected=true] + .DocSearch-Hit a', 'background-color', 'var(--vp-c-brand-soft)'),
+    r(DSF, '.DocSearch-Hit mark', 'color', 'var(--docsearch-highlight-color)'),
+  ], resolve, brand1, soft);
+  assert.equal(sibling.length, 1, 'sibling combinator: context does not leak');
+  // 2. :root's --docsearch-sidepanel-accent is var(--docsearch-highlight-color), computed on
+  // the root: inside the selected hit it is still brand-1.
+  const nested = brandSoftFindings([
+    r(DSF, '.DocSearch-Hit[aria-selected=true] a', 'background-color', 'var(--docsearch-hit-highlight-color)'),
+    r(DSF, '.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-path', 'color', 'var(--docsearch-sidepanel-accent)'),
+  ], resolve, brand1, soft);
+  assert.equal(nested.length, 1, 'a root var() value is not resolved in the context');
+  assert.ok(resolve('var(--docsearch-sidepanel-accent)', ancestry('.DocSearch-Hit[aria-selected=true] .DocSearch-Hit-path')).includes(brand1));
+  // 3. The search button is in the nav bar, outside the portal.
+  const button = brandSoftFindings([
+    r(DSF, '.DocSearch-Button-Key', 'background', 'var(--vp-c-brand-soft)'),
+    r('components/VPNavBar.vue', '.VPNavBar .DocSearch-Button-Key', 'color', 'var(--vp-c-brand-1)'),
+  ], resolve, brand1, soft);
+  assert.equal(button.length, 1, 'the search button is not in the portal');
+  const modal = brandSoftFindings([
+    r(DSF, '.DocSearch-Hit-source', 'background', 'var(--vp-c-brand-soft)'),
+    r('components/VPNavBar.vue', '.VPNavBar .DocSearch-Hit-source', 'color', 'var(--vp-c-brand-1)'),
+  ], resolve, brand1, soft);
+  assert.equal(modal.length, 0, 'the modal is');
 });
 
 test('brand-soft guard: it finds brand-1 text on, inside, above and next to a brand-soft ground', () => {
